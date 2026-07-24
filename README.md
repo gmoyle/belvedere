@@ -1,34 +1,81 @@
 Belvedere
 =========
 
-An automated file manager for Windows
+An automated file manager for Windows — **revived**.
 -------------------------------------
 
-* Platform: Windows (XP and later)
-* Language(s): AutoHotkey, NSIS (for the installer)
-* License: GPL v3 
+Belvedere watches folders you choose and automatically moves, copies, renames,
+recycles, or otherwise acts on files based on rules you define (by name,
+extension, size, or date). It was originally written by Adam Pash and
+distributed by Lifehacker as an AutoHotkey app.
 
-See [LICENSE.txt](https://github.com/mshorts/belvedere/blob/master/LICENSE.txt) for licensing details.
+This repository now contains a **native .NET rewrite** (`src/Belvedere`) that
+replaces the unmaintained AutoHotkey version, which stopped working on modern
+Windows. The original AutoHotkey source is preserved in the repository root and
+`includes/` for reference.
 
-#How to build the installer manually.
+* Platform: Windows 10 / 11 (x64)
+* Language: C# / .NET 8 (WinForms)
+* License: GPL v3 — see [LICENSE.txt](LICENSE.txt)
 
-1. Clone the repo: `git clone git://github.com/mshorts/belvedere.git`
-2. Download and install [NSIS](http://prdownloads.sourceforge.net/nsis/nsis-2.46-setup.exe?download)
-3. Download [KIllProc plug-in for NSIS](http://code.google.com/p/mulder/downloads/detail?name=NSIS-KillProc-Plugin.2011-04-09.zip&can=4&q=) 
-4. Download and install [Microsoft HTML Help Workshop 1.3](http://www.microsoft.com/download/en/details.aspx?displaylang=en&id=21138).
-5. Download and install [AutoHotkey_L](http://www.autohotkey.com/download/).
-6. Download and install [Compile_AHK](http://www.autohotkey.com/forum/topic22975.html).
-7. Compile Belvedere.ahk with Compile_AHK(in the root of the repo) and move the .exe into the /installer directory.
-8. Compile /help/Belvedere Help.hhp with HTML Help Workshop and move the .chm to the /installer directory.
-9. Compile /installer/install.nsi
-10. Make sure to test the installer.
+Why the rewrite
+---------------
 
-#How to build the installer automatically.
+The AutoHotkey v1 build broke on current Windows for several reasons: AHK v1 is
+legacy (the ecosystem moved to v2), the unsigned compiled `.exe` was blocked by
+SmartScreen/Defender, and it depended on dead components (Growl, iTunes COM
+automation, a bundled 7-Zip). The rewrite is a modern, signable, self-contained
+tray application with no external runtime dependencies.
 
-1. Run build.ahk
-2. Find the installer in the /dist directory. 
+What's new / different
+----------------------
 
-#How to run.
+* **Real-time folder watching** (`FileSystemWatcher`) with a periodic sweep as a
+  safety net — no more waiting for a fixed poll interval.
+* **Native Windows notifications** instead of Growl.
+* **Recycle Bin** via the proper Windows shell API.
+* **JSON configuration** under `%AppData%\Belvedere\config.json`, plus a
+  **one-click importer for your existing `rules.ini`** so upgraders keep their
+  rules.
+* **Runs as the current user** (no forced Administrator elevation) and can start
+  automatically at sign-in.
+* Dropped: iTunes integration, Growl, and built-in 7-Zip compression.
 
-1. Download the installer -or-
-2. Install AutoHotkey and run Belvedere.ahk.
+Rule model (unchanged concept)
+------------------------------
+
+A rule watches a source folder and, for every file matching **all** or **any**
+of its conditions, performs an action:
+
+* **Subjects:** Name, Extension, Size, Date last modified / opened / created
+* **Verbs:** is / is not, matches/contains one of, contains, RegEx, greater/less
+  than (size), is (not) in the last N seconds…weeks (dates)
+* **Actions:** Move (optionally leaving a shortcut), Copy, Rename (with
+  `[filename]`, `[ext]`, `[YYYY]`, … tokens), Send to Recycle Bin, Delete, Open,
+  Print, or run a Custom program.
+
+Build & run
+-----------
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+
+```bash
+# Run from source
+dotnet run --project src/Belvedere/Belvedere.csproj
+
+# Produce a self-contained single-file exe (no runtime install needed)
+dotnet publish src/Belvedere/Belvedere.csproj -c Release -r win-x64 --self-contained true ^
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
+  -o dist/win-x64
+```
+
+The published `dist/win-x64/Belvedere.exe` (plus its `resources/` folder) is all
+you need to distribute. For production, code-sign the `.exe` to avoid SmartScreen
+warnings.
+
+Legacy AutoHotkey version
+-------------------------
+
+The original AutoHotkey source (`Belvedere.ahk`, `includes/`, `installer/`) is
+kept for historical reference and requires AutoHotkey v1.x to build. It is no
+longer the supported build path.
