@@ -1,4 +1,3 @@
-using System.Reflection;
 using Belvedere.Engine;
 using Belvedere.Models;
 using Belvedere.Services;
@@ -64,7 +63,7 @@ public sealed class TrayAppContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Icon = _iconActive,
-            Text = $"Belvedere {AppVersion}",
+            Text = $"Belvedere {AppInfo.Version}",
             Visible = true,
             ContextMenuStrip = menu,
         };
@@ -73,10 +72,6 @@ public sealed class TrayAppContext : ApplicationContext
         _watcher.Start(_config);
     }
 
-
-
-    private static string AppVersion =>
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.0";
 
     // -- Menu actions --------------------------------------------------------
 
@@ -139,13 +134,13 @@ public sealed class TrayAppContext : ApplicationContext
         _watcher.SetPaused(pause);
         _pauseItem.Checked = pause;
         _tray.Icon = pause ? _iconPaused : _iconActive;
-        _tray.Text = pause ? "Belvedere (paused)" : $"Belvedere {AppVersion}";
+        _tray.Text = pause ? "Belvedere (paused)" : $"Belvedere {AppInfo.Version}";
     }
 
     private void ShowAbout()
     {
         MessageBox.Show(
-            $"Belvedere {AppVersion}\n\n" +
+            $"Belvedere {AppInfo.Version}\n\n" +
             "Automated file manager for Windows.\n" +
             "Revived as a native .NET application from Adam Pash's\n" +
             "original AutoHotkey app distributed by Lifehacker.\n\n" +

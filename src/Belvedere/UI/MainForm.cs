@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Belvedere.Models;
@@ -50,6 +51,7 @@ public sealed class MainForm : Form
         tabs.TabPages.Add(BuildRulesTab());
         tabs.TabPages.Add(BuildPrefsTab());
         tabs.TabPages.Add(BuildLogTab());
+        tabs.TabPages.Add(BuildAboutTab());
 
         var buttons = BuildButtonBar();
 
@@ -272,6 +274,88 @@ public sealed class MainForm : Form
         page.Controls.Add(_logBox);
         page.Controls.Add(bar);
         return page;
+    }
+
+    // -- About tab -------------------------------------------------------------
+
+    private TabPage BuildAboutTab()
+    {
+        var page = new TabPage("About");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Padding = new Padding(20),
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var icon = new PictureBox
+        {
+            Image = AppIcons.Active.ToBitmap(),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Width = 72,
+            Height = 72,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            Margin = new Padding(0, 4, 0, 0),
+        };
+
+        var title = new Label
+        {
+            Text = $"Belvedere {AppInfo.Version}",
+            Font = new Font(Font.FontFamily, 15f, FontStyle.Bold),
+            AutoSize = true,
+        };
+
+        var description = new Label
+        {
+            Text = "Automated file manager for Windows. Watches folders and moves,\n" +
+                   "copies, renames, recycles, or otherwise acts on files automatically,\n" +
+                   "based on rules you define.",
+            AutoSize = true,
+            Margin = new Padding(0, 10, 0, 12),
+        };
+
+        var credits = new Label
+        {
+            Text = "Originally written by Adam Pash, distributed by Lifehacker.\n" +
+                   "Maintained by Matthew Shorts. Icon design by What Cheer.\n\n" +
+                   "Revived as a native .NET application, licensed under the GNU GPL v3.",
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 12),
+        };
+
+        var link = new LinkLabel { Text = "View source on GitHub", AutoSize = true };
+        link.LinkClicked += (_, _) => OpenGitHubRepo();
+
+        var textPanel = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false,
+        };
+        textPanel.Controls.Add(title);
+        textPanel.Controls.Add(description);
+        textPanel.Controls.Add(credits);
+        textPanel.Controls.Add(link);
+
+        layout.Controls.Add(icon, 0, 0);
+        layout.Controls.Add(textPanel, 1, 0);
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private static void OpenGitHubRepo()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/gmoyle/belvedere") { UseShellExecute = true });
+        }
+        catch
+        {
+            // Opening a browser link is a convenience, not critical - fail quietly.
+        }
     }
 
     private void RefreshLog()
