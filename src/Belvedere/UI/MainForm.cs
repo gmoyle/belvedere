@@ -168,17 +168,18 @@ public sealed class MainForm : Form
         try
         {
             var imported = IniImporter.Import(dlg.FileName);
-            if (imported.Rules.Count == 0)
+            if (imported.Config.Rules.Count == 0)
             {
                 MessageBox.Show("No rules were found in that file.", "Import",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            _working.Rules.AddRange(imported.Rules);
+            _working.Rules.AddRange(imported.Config.Rules);
             RefreshRuleList();
-            MessageBox.Show($"Imported {imported.Rules.Count} rule(s).", "Import",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(IniImporter.FormatSummary(imported), "Import",
+                MessageBoxButtons.OK,
+                imported.Warnings.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {

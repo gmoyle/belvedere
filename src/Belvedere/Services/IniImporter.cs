@@ -1,6 +1,13 @@
+using Belvedere.Engine;
 using Belvedere.Models;
 
 namespace Belvedere.Services;
+
+/// <summary>A rule imported from rules.ini whose destination folder could not
+/// be created, and was therefore disabled rather than left silently broken.</summary>
+public sealed record ImportWarning(string RuleName, string Destination, string Reason);
+
+public sealed record ImportResult(AppConfig Config, IReadOnlyList<ImportWarning> Warnings);
 
 /// <summary>
 /// Migrates a legacy Belvedere <c>rules.ini</c> into the modern
@@ -8,10 +15,11 @@ namespace Belvedere.Services;
 /// </summary>
 public static class IniImporter
 {
-    public static AppConfig Import(string iniPath)
+    public static ImportResult Import(string iniPath)
     {
         var ini = Ini.Parse(File.ReadAllLines(iniPath));
         var config = new AppConfig();
+        var warnings = new List<ImportWarning>();
 
         // Preferences ---------------------------------------------------------
         if (ini.TryGetValue("Preferences", out var prefs))
@@ -33,31 +41,43 @@ public static class IniImporter
             if (rule is null) continue;
 
             config.Rules.Add(rule);
-            EnsureDestinationExists(rule);
+
+            var warning = EnsureDestinationExists(rule);
+            if (warning is not null) warnings.Add(warning);
         }
 
-        return config;
+        return new ImportResult(config, warnings);
     }
 
     /// <summary>Best-effort: create a rule's destination folder if it's missing,
     /// so an imported rule isn't silently broken just because the old machine's
-    /// folder layout doesn't exist yet on this one. Never throws - a rule whose
-    /// destination can't be created just gets caught by the same check when it
-    /// runs.</summary>
-    private static void EnsureDestinationExists(Rule rule)
+    /// folder layout doesn't exist yet on this one. If it can't be created, the
+    /// rule is disabled (rather than left enabled and silently failing on every
+    /// sweep) and a warning is returned so the caller can tell the user.</summary>
+    private static ImportWarning? EnsureDestinationExists(Rule rule)
     {
         bool usesFolder = rule.Action is ActionType.Move or ActionType.MoveLeaveShortcut or ActionType.Copy;
-        if (!usesFolder || string.IsNullOrWhiteSpace(rule.Destination)) return;
+        if (!usesFolder || string.IsNullOrWhiteSpace(rule.Destination)) return null;
 
-        try
-        {
-            if (!Directory.Exists(rule.Destination))
-                Directory.CreateDirectory(rule.Destination);
-        }
-        catch
-        {
-            // Leave it be; ActionRunner will retry (and report) this at run time.
-        }
+        if (DestinationFolder.TryEnsure(rule.Destination, out string error)) return null;
+
+        rule.Enabled = false;
+        return new ImportWarning(rule.Name, rule.Destination, error);
+    }
+
+    /// <summary>Builds a user-facing summary of an import, including any rules
+    /// that had to be disabled because their destination folder could not be
+    /// created. Shared by every UI entry point that imports a rules.ini.</summary>
+    public static string FormatSummary(ImportResult result)
+    {
+        string summary = $"Imported {result.Config.Rules.Count} rule(s).";
+        if (result.Warnings.Count == 0) return summary;
+
+        var lines = result.Warnings.Select(w => $"  • \"{w.RuleName}\" → {w.Destination}");
+        return summary +
+            "\n\nThe following rule(s) could not create their destination folder, " +
+            "so they were imported disabled. Fix the destination and re-enable them under Manage:\n" +
+            string.Join("\n", lines);
     }
 
     private static Rule? ParseRule(string name, Dictionary<string, string> sec)

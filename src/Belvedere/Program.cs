@@ -75,13 +75,14 @@ internal static class Program
         try
         {
             var imported = IniImporter.Import(path);
-            config.Rules.AddRange(imported.Rules);
-            config.SweepInterval = imported.SweepInterval;
-            config.SweepUnit = imported.SweepUnit;
-            config.EnableLogging = imported.EnableLogging;
-            config.ConfirmExit = imported.ConfirmExit;
-            MessageBox.Show($"Imported {imported.Rules.Count} rule(s). You can review them under Manage.",
-                "Import complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            config.Rules.AddRange(imported.Config.Rules);
+            config.SweepInterval = imported.Config.SweepInterval;
+            config.SweepUnit = imported.Config.SweepUnit;
+            config.EnableLogging = imported.Config.EnableLogging;
+            config.ConfirmExit = imported.Config.ConfirmExit;
+            MessageBox.Show(IniImporter.FormatSummary(imported) + "\n\nYou can review them under Manage.",
+                "Import complete", MessageBoxButtons.OK,
+                imported.Warnings.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
