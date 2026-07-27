@@ -56,6 +56,16 @@ public enum MatchMode
     Any,
 }
 
+/// <summary>What kind of filesystem entry a rule matches and acts on.
+/// Files is the default and preserves all pre-existing behavior; Folders lets
+/// a rule match and act on subfolders themselves rather than the files inside
+/// them.</summary>
+public enum MatchTarget
+{
+    Files,
+    Folders,
+}
+
 /// <summary>Unit for size comparisons.</summary>
 public enum SizeUnit
 {

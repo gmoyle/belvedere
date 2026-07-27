@@ -17,6 +17,10 @@ public sealed class Rule
     /// <summary>Recurse into subfolders.</summary>
     public bool Recursive { get; set; }
 
+    /// <summary>Whether this rule matches files or subfolders themselves.
+    /// Defaults to Files, so every pre-existing rule/import is unaffected.</summary>
+    public MatchTarget Target { get; set; } = MatchTarget.Files;
+
     /// <summary>Whether ALL conditions or ANY condition must match.</summary>
     public MatchMode Match { get; set; } = MatchMode.All;
 

@@ -77,10 +77,11 @@ public sealed class MainForm : Form
         _ruleList.GridLines = true;
         _ruleList.CheckBoxes = true;
         _ruleList.Dock = DockStyle.Fill;
-        _ruleList.Columns.Add("Rule", 160);
-        _ruleList.Columns.Add("Source folder", 200);
+        _ruleList.Columns.Add("Rule", 150);
+        _ruleList.Columns.Add("Source folder", 190);
+        _ruleList.Columns.Add("Target", 60);
         _ruleList.Columns.Add("Action", 130);
-        _ruleList.Columns.Add("Destination", 180);
+        _ruleList.Columns.Add("Destination", 160);
         _ruleList.DoubleClick += (_, _) => EditSelected();
         _ruleList.ItemChecked += (_, e) =>
         {
@@ -107,6 +108,7 @@ public sealed class MainForm : Form
         {
             var item = new ListViewItem(r.Name) { Checked = r.Enabled, Tag = r };
             item.SubItems.Add(r.SourceFolder);
+            item.SubItems.Add(r.Target.Label());
             item.SubItems.Add(r.Action.Label());
             item.SubItems.Add(r.Destination);
             _ruleList.Items.Add(item);

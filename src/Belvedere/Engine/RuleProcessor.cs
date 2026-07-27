@@ -19,7 +19,7 @@ public sealed class RuleProcessor
 
     /// <summary>Confirmation gate for rules with ConfirmAction=true. Returns true
     /// to proceed. If null, confirmation-required actions are skipped for safety.</summary>
-    public Func<Rule, FileInfo, bool>? ConfirmPrompt { get; set; }
+    public Func<Rule, FileSystemInfo, bool>? ConfirmPrompt { get; set; }
 
     public RuleProcessor(Logger log) => _log = log;
 
@@ -41,11 +41,16 @@ public sealed class RuleProcessor
 
         var option = rule.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
-        // Snapshot first: acting on files mutates the folder while enumerating.
-        List<string> files;
+        // Snapshot first: acting on entries mutates the folder while enumerating.
+        // (A matched parent folder can also carry away subfolders that were
+        // independently snapshotted too; the FileSystemInfo.Exists check below
+        // quietly skips those rather than erroring on a path that just moved.)
+        List<string> paths;
         try
         {
-            files = Directory.EnumerateFiles(rule.SourceFolder, "*", option).ToList();
+            paths = rule.Target == MatchTarget.Folders
+                ? Directory.EnumerateDirectories(rule.SourceFolder, "*", option).ToList()
+                : Directory.EnumerateFiles(rule.SourceFolder, "*", option).ToList();
         }
         catch (Exception ex)
         {
@@ -53,22 +58,26 @@ public sealed class RuleProcessor
             return;
         }
 
-        foreach (var path in files)
+        foreach (var path in paths)
         {
-            FileInfo file;
-            try { file = new FileInfo(path); if (!file.Exists) continue; }
+            FileSystemInfo entry;
+            try
+            {
+                entry = rule.Target == MatchTarget.Folders ? new DirectoryInfo(path) : new FileInfo(path);
+                if (!entry.Exists) continue;
+            }
             catch { continue; }
 
-            if (!RuleEngine.ShouldProcess(rule, file)) continue;
+            if (!RuleEngine.ShouldProcess(rule, entry)) continue;
 
             if (rule.ConfirmAction)
             {
-                bool proceed = ConfirmPrompt?.Invoke(rule, file) ?? false;
+                bool proceed = ConfirmPrompt?.Invoke(rule, entry) ?? false;
                 if (!proceed) continue;
             }
 
-            var result = ActionRunner.Run(rule, file);
-            string header = $"{rule.Action.Label()}: {file.Name}";
+            var result = ActionRunner.Run(rule, entry);
+            string header = $"{rule.Action.Label()}: {entry.Name}";
 
             switch (result.Outcome)
             {

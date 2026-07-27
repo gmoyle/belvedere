@@ -74,6 +74,30 @@ public static class Display
     public static bool IsDateSubject(this Subject s) =>
         s is Subject.DateModified or Subject.DateAccessed or Subject.DateCreated;
 
+    public static string Label(this MatchTarget t) => t switch
+    {
+        MatchTarget.Files => "Files",
+        MatchTarget.Folders => "Folders",
+        _ => t.ToString(),
+    };
+
+    /// <summary>Which subjects make sense for the chosen target. Folders have
+    /// no meaningful Extension or Size in this app (folder size would require
+    /// an expensive recursive sum), so those are left Files-only.</summary>
+    public static Subject[] SubjectsFor(MatchTarget target) => target switch
+    {
+        MatchTarget.Folders => new[] { Subject.Name, Subject.DateModified, Subject.DateAccessed, Subject.DateCreated },
+        _ => Enum.GetValues<Subject>(),
+    };
+
+    /// <summary>Which actions make sense for the chosen target (Print doesn't
+    /// apply to a folder).</summary>
+    public static ActionType[] ActionsFor(MatchTarget target) => target switch
+    {
+        MatchTarget.Folders => Enum.GetValues<ActionType>().Where(a => a != ActionType.Print).ToArray(),
+        _ => Enum.GetValues<ActionType>(),
+    };
+
     // -- Reverse lookups (label/legacy string -> enum), for the INI importer --
 
     public static Subject? ParseSubject(string s) => s.Trim().ToLowerInvariant() switch

@@ -13,8 +13,12 @@ public sealed class RuleEditorForm : Form
     private readonly TextBox _name = new() { Width = 260 };
     private readonly TextBox _source = new() { Width = 380 };
     private readonly CheckBox _recursive = new() { Text = "Include subfolders", AutoSize = true };
+    private readonly RadioButton _targetFiles = new() { Text = "Files", AutoSize = true, Checked = true };
+    private readonly RadioButton _targetFolders = new() { Text = "Folders", AutoSize = true };
     private readonly RadioButton _matchAll = new() { Text = "ALL conditions", AutoSize = true, Checked = true };
     private readonly RadioButton _matchAny = new() { Text = "ANY condition", AutoSize = true };
+
+    private MatchTarget CurrentTarget => _targetFolders.Checked ? MatchTarget.Folders : MatchTarget.Files;
 
     private readonly FlowLayoutPanel _conditions = new()
     {
@@ -47,9 +51,10 @@ public sealed class RuleEditorForm : Form
         MaximizeBox = false;
         Icon = AppIcons.Active;
 
-        _action.Items.AddRange(Enum.GetValues<ActionType>().Select(a => (object)a.Label()).ToArray());
         _action.SelectedIndexChanged += (_, _) => UpdateActionUi();
         _destBrowse.Click += (_, _) => BrowseDestination();
+        _targetFiles.CheckedChanged += (_, _) => OnTargetChanged();
+        _targetFolders.CheckedChanged += (_, _) => OnTargetChanged();
 
         Controls.Add(BuildLayout());
 
@@ -98,6 +103,12 @@ public sealed class RuleEditorForm : Form
         srcPanel.Controls.Add(browseSrc);
         t.Controls.Add(srcPanel, 1, 1);
         t.Controls.Add(_recursive, 1, 2);
+
+        t.Controls.Add(new Label { Text = "Match:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 3);
+        var targetPanel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0) };
+        targetPanel.Controls.Add(_targetFiles);
+        targetPanel.Controls.Add(_targetFolders);
+        t.Controls.Add(targetPanel, 1, 3);
         return t;
     }
 
@@ -184,9 +195,18 @@ public sealed class RuleEditorForm : Form
         _name.Text = _rule.Name;
         _source.Text = _rule.SourceFolder;
         _recursive.Checked = _rule.Recursive;
+
+        // Target must be set before the action list and condition rows are
+        // populated below, since both filter themselves by CurrentTarget.
+        _targetFiles.Checked = _rule.Target == MatchTarget.Files;
+        _targetFolders.Checked = _rule.Target == MatchTarget.Folders;
+
         _matchAll.Checked = _rule.Match == MatchMode.All;
         _matchAny.Checked = _rule.Match == MatchMode.Any;
+
+        RefreshActionItems();
         _action.SelectedItem = _rule.Action.Label();
+
         _destination.Text = _rule.Destination;
         _overwrite.Checked = _rule.Overwrite;
         _confirm.Checked = _rule.ConfirmAction;
@@ -262,6 +282,7 @@ public sealed class RuleEditorForm : Form
             Name = _name.Text.Trim(),
             SourceFolder = _source.Text.Trim().TrimEnd('\\'),
             Recursive = _recursive.Checked,
+            Target = CurrentTarget,
             Match = _matchAny.Checked ? MatchMode.Any : MatchMode.All,
             Conditions = conditions,
             Action = action,
@@ -282,6 +303,7 @@ public sealed class RuleEditorForm : Form
         _rule.Name = built.Name;
         _rule.SourceFolder = built.SourceFolder;
         _rule.Recursive = built.Recursive;
+        _rule.Target = built.Target;
         _rule.Match = built.Match;
         _rule.Conditions = built.Conditions;
         _rule.Action = built.Action;
@@ -320,13 +342,39 @@ public sealed class RuleEditorForm : Form
 
     private void AddConditionRow(Condition c)
     {
-        var row = new ConditionRow(c);
+        var row = new ConditionRow(c, CurrentTarget);
         row.RemoveRequested += (_, _) =>
         {
             _conditions.Controls.Remove(row);
             row.Dispose();
         };
         _conditions.Controls.Add(row);
+    }
+
+    /// <summary>Switching between Files and Folders changes which subjects
+    /// (Extension/Size are files-only) and actions (Print is files-only) make
+    /// sense, so both need to re-filter.</summary>
+    private void OnTargetChanged()
+    {
+        RefreshActionItems();
+        foreach (var row in _conditions.Controls.OfType<ConditionRow>())
+            row.UpdateTarget(CurrentTarget);
+    }
+
+    /// <summary>(Re)populates the action list for the current target,
+    /// preserving the current selection if it's still valid.</summary>
+    private void RefreshActionItems()
+    {
+        string? current = _action.SelectedItem?.ToString();
+        var items = Display.ActionsFor(CurrentTarget).Select(a => (object)a.Label()).ToArray();
+
+        _action.Items.Clear();
+        _action.Items.AddRange(items);
+
+        if (current is not null && _action.Items.Contains(current))
+            _action.SelectedItem = current;
+        else if (_action.Items.Count > 0)
+            _action.SelectedIndex = 0;
     }
 
     private void UpdateActionUi()
@@ -382,14 +430,14 @@ public sealed class RuleEditorForm : Form
 
         public event EventHandler? RemoveRequested;
 
-        public ConditionRow(Condition c)
+        public ConditionRow(Condition c, MatchTarget target)
         {
             FlowDirection = FlowDirection.LeftToRight;
             AutoSize = true;
             WrapContents = false;
             Margin = new Padding(2);
 
-            _subject.Items.AddRange(Enum.GetValues<Subject>().Select(s => (object)s.Label()).ToArray());
+            _subject.Items.AddRange(Display.SubjectsFor(target).Select(s => (object)s.Label()).ToArray());
             _subject.SelectedIndexChanged += (_, _) => OnSubjectChanged();
             _remove.Click += (_, _) => RemoveRequested?.Invoke(this, EventArgs.Empty);
 
@@ -407,6 +455,23 @@ public sealed class RuleEditorForm : Form
             if (_verb.SelectedIndex < 0 && _verb.Items.Count > 0) _verb.SelectedIndex = 0;
             _value.Text = c.Value;
             SetUnitFromCondition(c);
+        }
+
+        /// <summary>Re-filters the Subject list for a Files/Folders switch,
+        /// preserving the current selection if it's still valid for the new
+        /// target (e.g. Name), or falling back to the first available subject.</summary>
+        public void UpdateTarget(MatchTarget target)
+        {
+            string? current = _subject.SelectedItem?.ToString();
+            var items = Display.SubjectsFor(target).Select(s => (object)s.Label()).ToArray();
+
+            _subject.Items.Clear();
+            _subject.Items.AddRange(items);
+
+            if (current is not null && _subject.Items.Contains(current))
+                _subject.SelectedItem = current;
+            else if (_subject.Items.Count > 0)
+                _subject.SelectedIndex = 0;
         }
 
         private void OnSubjectChanged()

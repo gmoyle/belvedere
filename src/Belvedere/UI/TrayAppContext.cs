@@ -173,12 +173,12 @@ public sealed class TrayAppContext : ApplicationContext
         try { _marshal.BeginInvoke(action); } catch { }
     }
 
-    private bool Confirm(Rule rule, FileInfo file)
+    private bool Confirm(Rule rule, FileSystemInfo entry)
     {
         if (_marshal.IsDisposed) return false;
         return (bool)_marshal.Invoke(new Func<bool>(() =>
             MessageBox.Show(
-                $"Are you sure you want to {rule.Action.Label().ToLowerInvariant()} \"{file.Name}\"\n" +
+                $"Are you sure you want to {rule.Action.Label().ToLowerInvariant()} \"{entry.Name}\"\n" +
                 $"because of rule \"{rule.Name}\"?",
                 "Action Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
             == DialogResult.Yes));
