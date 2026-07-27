@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX v5 authoring for the Belvedere .NET installer.
+
+  Produces a per-machine MSI that installs a single self-contained Belvedere.exe
+  to Program Files, adds a Start Menu shortcut, and registers a proper
+  Add/Remove Programs entry with clean uninstall and version-upgrade handling.
+
+  Build (from the repo root), after publishing to dist\win-x64:
+    wix build installer-dotnet\Belvedere.wxs -o dist\Belvedere-2.0.0.msi ^
+      -d PublishDir=dist\win-x64 -d IconFile=src\Belvedere\resources\belvedere.ico
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <?ifndef ProductVersion ?>
+    <?define ProductVersion = "2.0.0" ?>
+  <?endif?>
+
+  <Package
+      Name="Belvedere"
+      Manufacturer="Belvedere (revived)"
+      Version="$(var.ProductVersion)"
+      UpgradeCode="7C3B9E42-5F1A-4D8C-9B6E-2A7F0C4D1E93"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <!-- Block installing an older version over a newer one. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Belvedere is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Product icon shown in Add/Remove Programs. -->
+    <Icon Id="BelvedereIcon" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="BelvedereIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/gmoyle/belvedere" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- Install location: C:\Program Files\Belvedere -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Belvedere" />
+    </StandardDirectory>
+
+    <!-- Start Menu folder for the shortcut. -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppMenuFolder" Name="Belvedere" />
+    </StandardDirectory>
+
+    <!-- The application executable. -->
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Component Id="BelvedereExe">
+        <File Id="BelvedereExeFile" Source="$(var.PublishDir)\Belvedere.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Start Menu shortcut (+ its own folder cleanup on uninstall). -->
+    <Component Id="StartMenuShortcut" Directory="AppMenuFolder" Guid="8A1D6F30-2C4B-4E7A-A1F5-9D3B8E62C047">
+      <Shortcut Id="BelvedereStartMenu"
+                Name="Belvedere"
+                Description="Automated file manager for Windows"
+                Target="[INSTALLFOLDER]Belvedere.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="BelvedereIcon" />
+      <RemoveFolder Id="RemoveAppMenuFolder" On="uninstall" />
+      <!-- Per-user keypath required for an advertised/HKCU-anchored shortcut. -->
+      <RegistryValue Root="HKCU" Key="Software\Belvedere" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="Belvedere" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+  </Package>
+</Wix>

@@ -58,8 +58,17 @@ of its conditions, performs an action:
   `[filename]`, `[ext]`, `[YYYY]`, … tokens), Send to Recycle Bin, Delete, Open,
   Print, or run a Custom program.
 
-Build & run
------------
+Install
+-------
+
+Download and run **`Belvedere-<version>.msi`**. It installs a single
+self-contained executable to `C:\Program Files\Belvedere`, adds a Start Menu
+shortcut, and registers a normal Add/Remove Programs entry for clean uninstall.
+No .NET runtime or AutoHotkey is required. Enable "Start Belvedere when I sign
+in" from the app's Preferences if you want it to launch automatically.
+
+Build & run (from source)
+-------------------------
 
 Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
 
@@ -67,15 +76,27 @@ Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
 # Run from source
 dotnet run --project src/Belvedere/Belvedere.csproj
 
-# Produce a self-contained single-file exe (no runtime install needed)
-dotnet publish src/Belvedere/Belvedere.csproj -c Release -r win-x64 --self-contained true ^
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
-  -o dist/win-x64
+# Produce a self-contained, single-file exe (no runtime install needed)
+dotnet publish src/Belvedere/Belvedere.csproj -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/win-x64
 ```
 
-The published `dist/win-x64/Belvedere.exe` (plus its `resources/` folder) is all
-you need to distribute. For production, code-sign the `.exe` to avoid SmartScreen
-warnings.
+The published `dist/win-x64/Belvedere.exe` is fully self-contained — the icons
+are embedded, so that single file is all you need to distribute.
+
+Build the installer
+-------------------
+
+Requires the [WiX v5 toolset](https://wixtoolset.org/) (`dotnet tool install --global wix`).
+The script publishes the exe and packages the MSI in one step:
+
+```powershell
+pwsh installer-dotnet/build.ps1                # builds dist/Belvedere-2.0.0.msi
+pwsh installer-dotnet/build.ps1 -Version 2.1.0 # override the version
+```
+
+For production distribution, code-sign both the `.exe` and the `.msi` to avoid
+SmartScreen warnings.
 
 Legacy AutoHotkey version
 -------------------------

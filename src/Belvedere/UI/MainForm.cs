@@ -44,7 +44,7 @@ public sealed class MainForm : Form
         Size = new Size(720, 520);
         MinimumSize = new Size(600, 420);
         StartPosition = FormStartPosition.CenterScreen;
-        try { Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "resources", "belvedere.ico")); } catch { }
+        Icon = AppIcons.Active;
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(BuildRulesTab());

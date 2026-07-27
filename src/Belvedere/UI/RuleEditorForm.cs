@@ -44,7 +44,7 @@ public sealed class RuleEditorForm : Form
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
-        try { Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "resources", "belvedere.ico")); } catch { }
+        Icon = AppIcons.Active;
 
         _action.Items.AddRange(Enum.GetValues<ActionType>().Select(a => (object)a.Label()).ToArray());
         _action.SelectedIndexChanged += (_, _) => UpdateActionUi();

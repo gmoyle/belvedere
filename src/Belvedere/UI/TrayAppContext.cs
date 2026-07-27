@@ -36,8 +36,8 @@ public sealed class TrayAppContext : ApplicationContext
         _marshal = new Control();
         _ = _marshal.Handle; // force handle creation so Invoke works
 
-        _iconActive = LoadIcon("belvedere.ico");
-        _iconPaused = LoadIcon("belvedere-paused.ico");
+        _iconActive = AppIcons.Active;
+        _iconPaused = AppIcons.Paused;
 
         _processor = new RuleProcessor(_log)
         {
@@ -69,6 +69,8 @@ public sealed class TrayAppContext : ApplicationContext
 
         _watcher.Start(_config);
     }
+
+
 
     private static string AppVersion =>
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "2.0.0";
@@ -160,12 +162,5 @@ public sealed class TrayAppContext : ApplicationContext
         _tray.BalloonTipText = message;
         _tray.BalloonTipIcon = icon;
         _tray.ShowBalloonTip(4000);
-    }
-
-    private static Icon LoadIcon(string fileName)
-    {
-        string path = Path.Combine(AppContext.BaseDirectory, "resources", fileName);
-        try { return File.Exists(path) ? new Icon(path) : SystemIcons.Application; }
-        catch { return SystemIcons.Application; }
     }
 }

@@ -20,9 +20,11 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
-  <!-- Bundle the legacy icons so the tray/app can reuse them. -->
+  <!-- Embed the icons into the exe so it stays a single self-contained file
+       (single-file publish does not reliably copy loose content files). -->
   <ItemGroup>
-    <None Include="resources\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="resources\belvedere.ico" LogicalName="Belvedere.belvedere.ico" />
+    <EmbeddedResource Include="resources\belvedere-paused.ico" LogicalName="Belvedere.belvedere-paused.ico" />
   </ItemGroup>
 
 </Project>
