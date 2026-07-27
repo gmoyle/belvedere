@@ -7,13 +7,13 @@
   Add/Remove Programs entry with clean uninstall and version-upgrade handling.
 
   Build (from the repo root), after publishing to dist\win-x64:
-    wix build installer-dotnet\Belvedere.wxs -o dist\Belvedere-2.0.0.msi ^
+    wix build installer-dotnet\Belvedere.wxs -o dist\Belvedere-2.1.0.msi ^
       -d PublishDir=dist\win-x64 -d IconFile=src\Belvedere\resources\belvedere.ico
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "2.0.0" ?>
+    <?define ProductVersion = "2.1.0" ?>
   <?endif?>
 
   <Package

@@ -37,6 +37,12 @@ What's new / different
 
 * **Real-time folder watching** (`FileSystemWatcher`) with a periodic sweep as a
   safety net — no more waiting for a fixed poll interval.
+* **Rules can target whole folders, not just files** — move, copy, rename,
+  recycle, or delete a subfolder as a unit (e.g. "delete album folders
+  untouched for 30 days"), in addition to the original file-based rules.
+* **"Test rule" dry-run preview** — see exactly which files or folders a rule
+  would act on right now, and what would happen to them, before you ever
+  enable it or let it touch anything.
 * **Native Windows notifications** instead of Growl.
 * **Recycle Bin** via the proper Windows shell API.
 * **JSON configuration** under `%AppData%\Belvedere\config.json`, plus a
@@ -44,20 +50,27 @@ What's new / different
   rules.
 * **Runs as the current user** (no forced Administrator elevation) and can start
   automatically at sign-in.
+* An **About tab** in the Manage window (not just a tray popup) with version,
+  credits, and a link back to this repo.
 * Dropped: iTunes integration, Growl, and built-in 7-Zip compression.
 
 Rule model (unchanged concept)
 ------------------------------
 
-A rule watches a source folder and, for every file matching **all** or **any**
-of its conditions, performs an action:
+A rule watches a source folder and, for every file *or folder* matching
+**all** or **any** of its conditions, performs an action:
 
+* **Target:** Files or Folders — most subjects/actions work for either, except
+  Extension and Size (files only) and Print (files only).
 * **Subjects:** Name, Extension, Size, Date last modified / opened / created
 * **Verbs:** is / is not, matches/contains one of, contains, RegEx, greater/less
   than (size), is (not) in the last N seconds…weeks (dates)
 * **Actions:** Move (optionally leaving a shortcut), Copy, Rename (with
   `[filename]`, `[ext]`, `[YYYY]`, … tokens), Send to Recycle Bin, Delete, Open,
-  Print, or run a Custom program.
+  Print (files only), or run a Custom program.
+
+See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for a full walkthrough of rules,
+the Test-rule preview, and preferences.
 
 Install
 -------
@@ -92,12 +105,22 @@ Requires the [WiX v5 toolset](https://wixtoolset.org/) (`dotnet tool install --g
 The script publishes the exe and packages the MSI in one step:
 
 ```powershell
-pwsh installer-dotnet/build.ps1                # builds dist/Belvedere-2.0.0.msi
-pwsh installer-dotnet/build.ps1 -Version 2.1.0 # override the version
+pwsh installer-dotnet/build.ps1                # builds dist/Belvedere-2.1.0.msi
+pwsh installer-dotnet/build.ps1 -Version 2.2.0 # override the version
 ```
 
 For production distribution, code-sign both the `.exe` and the `.msi` to avoid
 SmartScreen warnings.
+
+Documentation
+-------------
+
+* [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — how rules, conditions, actions,
+  the Test-rule preview, and preferences work.
+* [CHANGELOG.md](CHANGELOG.md) — what changed in each version.
+* [FEATURE_IDEAS.md](FEATURE_IDEAS.md) — backlog of feature requests pulled
+  from the original Lifehacker comment thread, checked against the current
+  feature set.
 
 Legacy AutoHotkey version
 -------------------------

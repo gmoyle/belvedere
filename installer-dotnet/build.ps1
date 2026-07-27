@@ -16,7 +16,7 @@
       pwsh installer-dotnet/build.ps1 -Version 2.1.0
 #>
 param(
-    [string]$Version = "2.0.0",
+    [string]$Version = "2.1.0",
     [string]$Runtime = "win-x64"
 )
 
