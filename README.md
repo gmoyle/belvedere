@@ -13,10 +13,11 @@ distributed by **Lifehacker** as an AutoHotkey app, and later maintained by
 This repository is a **fork of [mshorts/belvedere](https://github.com/mshorts/belvedere)**
 (itself derived from [adampash/belvedere](https://github.com/adampash/belvedere))
 and now contains a **native .NET rewrite** (`src/Belvedere`) that replaces the
-unmaintained AutoHotkey version, which stopped working on modern Windows. All of
-the original AutoHotkey source is preserved unchanged in the repository root and
-`includes/` for reference and to honor its history. This project remains under
-the same GPL v3 license as the original.
+unmaintained AutoHotkey version, which stopped working on modern Windows. This
+project remains under the same GPL v3 license as the original. The original
+AutoHotkey source is preserved in the project's git history (see the commits
+before the .NET rewrite, or the upstream repos linked above) rather than kept
+in the working tree.
 
 * Platform: Windows 10 / 11 (x64)
 * Language: C# / .NET 8 (WinForms)
@@ -101,9 +102,9 @@ SmartScreen warnings.
 Legacy AutoHotkey version
 -------------------------
 
-The original AutoHotkey source (`Belvedere.ahk`, `includes/`, `installer/`) is
-kept for historical reference and requires AutoHotkey v1.x to build. It is no
-longer the supported build path.
+The original AutoHotkey source has been removed from the working tree now that
+the .NET rewrite is the supported version. It's still available in this
+repository's git history, and in the upstream repos linked above.
 
 Credits & lineage
 ------------------

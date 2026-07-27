@@ -30,10 +30,34 @@ public static class IniImporter
         {
             if (!ini.TryGetValue(name, out var sec)) continue;
             var rule = ParseRule(name, sec);
-            if (rule is not null) config.Rules.Add(rule);
+            if (rule is null) continue;
+
+            config.Rules.Add(rule);
+            EnsureDestinationExists(rule);
         }
 
         return config;
+    }
+
+    /// <summary>Best-effort: create a rule's destination folder if it's missing,
+    /// so an imported rule isn't silently broken just because the old machine's
+    /// folder layout doesn't exist yet on this one. Never throws - a rule whose
+    /// destination can't be created just gets caught by the same check when it
+    /// runs.</summary>
+    private static void EnsureDestinationExists(Rule rule)
+    {
+        bool usesFolder = rule.Action is ActionType.Move or ActionType.MoveLeaveShortcut or ActionType.Copy;
+        if (!usesFolder || string.IsNullOrWhiteSpace(rule.Destination)) return;
+
+        try
+        {
+            if (!Directory.Exists(rule.Destination))
+                Directory.CreateDirectory(rule.Destination);
+        }
+        catch
+        {
+            // Leave it be; ActionRunner will retry (and report) this at run time.
+        }
     }
 
     private static Rule? ParseRule(string name, Dictionary<string, string> sec)

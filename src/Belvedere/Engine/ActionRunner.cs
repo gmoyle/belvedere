@@ -48,8 +48,8 @@ public static class ActionRunner
     private static ActionResult Move(Rule rule, FileInfo file, bool leaveShortcut)
     {
         string dest = rule.Destination;
-        if (!Directory.Exists(dest))
-            return ActionResult.Fail($"Destination folder does not exist: {dest}");
+        if (!TryEnsureDestination(dest, out var ensureError))
+            return ActionResult.Fail(ensureError);
 
         string target = Path.Combine(dest, file.Name);
 
@@ -66,8 +66,8 @@ public static class ActionRunner
     private static ActionResult Copy(Rule rule, FileInfo file)
     {
         string dest = rule.Destination;
-        if (!Directory.Exists(dest))
-            return ActionResult.Fail($"Destination folder does not exist: {dest}");
+        if (!TryEnsureDestination(dest, out var ensureError))
+            return ActionResult.Fail(ensureError);
 
         string target = Path.Combine(dest, file.Name);
 
@@ -137,6 +137,36 @@ public static class ActionRunner
     // -- Helpers -------------------------------------------------------------
 
     private static readonly char[] IllegalNameChars = Path.GetInvalidFileNameChars();
+
+    /// <summary>Creates the destination folder if it doesn't exist yet, rather
+    /// than failing the action - the user picked this folder on purpose, it
+    /// just may not have been created (or may have been cleaned up) yet.</summary>
+    private static bool TryEnsureDestination(string dest, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(dest))
+        {
+            error = "No destination folder is configured for this rule.";
+            return false;
+        }
+
+        if (Directory.Exists(dest))
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(dest);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Destination folder does not exist and could not be created: {dest} ({ex.Message})";
+            return false;
+        }
+    }
 
     private static string ExpandTemplate(string template, FileInfo file)
     {
