@@ -18,7 +18,7 @@ public sealed class MainForm : Form
 
     private readonly ConfigStore _store;
     private readonly Logger _log;
-    private readonly Action<AppConfig> _apply;
+    private readonly Func<AppConfig, bool> _apply;
     private AppConfig _working;
 
     private readonly ListView _ruleList = new();
@@ -33,7 +33,7 @@ public sealed class MainForm : Form
     private CheckBox _confirmExit = null!;
     private CheckBox _startup = null!;
 
-    public MainForm(ConfigStore store, Logger log, AppConfig config, Action<AppConfig> apply)
+    public MainForm(ConfigStore store, Logger log, AppConfig config, Func<AppConfig, bool> apply)
     {
         _store = store;
         _log = log;
@@ -297,8 +297,17 @@ public sealed class MainForm : Form
     private void SaveLog()
     {
         using var dlg = new SaveFileDialog { Filter = "Log file (*.log)|*.log|Text (*.txt)|*.txt", FileName = "belvedere.log" };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
             File.WriteAllText(dlg.FileName, _log.ReadAll());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not save the log:\n{ex.Message}", "Save failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     // -- Bottom buttons ------------------------------------------------------
@@ -312,16 +321,18 @@ public sealed class MainForm : Form
             Height = 48,
             Padding = new Padding(8),
         };
-        bar.Controls.Add(MakeButton("Save && Close", () => { SaveAll(); Close(); }, primary: true));
-        bar.Controls.Add(MakeButton("Apply", SaveAll));
+        // Only close if the save actually succeeded - a failed save must never
+        // look the same as a successful one (see TrayAppContext.ApplyConfig).
+        bar.Controls.Add(MakeButton("Save && Close", () => { if (SaveAll()) Close(); }, primary: true));
+        bar.Controls.Add(MakeButton("Apply", () => SaveAll()));
         bar.Controls.Add(MakeButton("Close", Close));
         return bar;
     }
 
-    private void SaveAll()
+    private bool SaveAll()
     {
         SavePrefsFromControls();
-        _apply(Clone(_working)); // hand a fresh copy to the tray/watcher
+        return _apply(Clone(_working)); // hand a fresh copy to the tray/watcher
     }
 
     // -- Helpers -------------------------------------------------------------

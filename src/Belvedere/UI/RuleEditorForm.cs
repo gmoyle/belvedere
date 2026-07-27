@@ -209,12 +209,28 @@ public sealed class RuleEditorForm : Form
             return;
         }
 
-        var conditions = _conditions.Controls.OfType<ConditionRow>().Select(r => r.ToCondition()).ToList();
-        if (conditions.Count == 0)
+        var rows = _conditions.Controls.OfType<ConditionRow>().ToList();
+        if (rows.Count == 0)
         {
             MessageBox.Show("Add at least one condition.", "No conditions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+
+        // Validate every condition before accepting any of them - a rule that
+        // "saves fine" but silently never matches anything (a bad regex, a
+        // non-numeric size/date value) is worse than an upfront error, since
+        // nothing at runtime would ever tell the user why it's not working.
+        foreach (var row in rows)
+        {
+            string? error = row.Validate();
+            if (error is not null)
+            {
+                MessageBox.Show(error, "Invalid condition", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+        }
+
+        var conditions = rows.Select(r => r.ToCondition()).ToList();
 
         var action = Display.ParseAction(_action.SelectedItem?.ToString() ?? "") ?? ActionType.Move;
         if ((action is ActionType.Move or ActionType.MoveLeaveShortcut or ActionType.Copy)
@@ -367,6 +383,37 @@ public sealed class RuleEditorForm : Form
         {
             if (c.Subject == Subject.Size) _unit.SelectedItem = c.SizeUnit.ToString();
             else if (c.Subject.IsDateSubject()) _unit.SelectedItem = c.TimeUnit.ToString();
+        }
+
+        /// <summary>Checks this row's value against what its subject/verb
+        /// actually require at runtime, so a broken condition is caught here
+        /// instead of just silently never matching anything later. Returns a
+        /// user-facing error message, or null if the row is valid.</summary>
+        public string? Validate()
+        {
+            var subject = Display.ParseSubject(_subject.SelectedItem?.ToString() ?? "") ?? Subject.Name;
+            var verb = Display.ParseVerb(_verb.SelectedItem?.ToString() ?? "") ?? Verb.Is;
+            string value = _value.Text.Trim();
+            string label = $"\"{subject.Label()} {verb.Label()}\"";
+
+            if (subject == Subject.Size)
+            {
+                if (!double.TryParse(value, out _))
+                    return $"{label} needs a number (got \"{value}\").";
+            }
+            else if (subject.IsDateSubject())
+            {
+                if (!double.TryParse(value, out double amount) || amount < 0)
+                    return $"{label} needs a non-negative number (got \"{value}\").";
+            }
+
+            if (verb == Verb.Regex)
+            {
+                try { _ = new System.Text.RegularExpressions.Regex(value); }
+                catch (ArgumentException ex) { return $"\"{value}\" is not a valid regular expression: {ex.Message}"; }
+            }
+
+            return null;
         }
 
         public Condition ToCondition()

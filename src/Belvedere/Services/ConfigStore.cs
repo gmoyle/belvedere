@@ -8,6 +8,11 @@ namespace Belvedere.Services;
 /// Loads and saves <see cref="AppConfig"/> as JSON under
 /// %AppData%\Belvedere\config.json. Enums are written as readable strings.
 /// </summary>
+/// <summary>The result of loading config: the config itself, and - if the
+/// existing file couldn't be read - a user-facing explanation of what
+/// happened and where the unreadable file was backed up.</summary>
+public sealed record LoadResult(AppConfig Config, string? Warning);
+
 public sealed class ConfigStore
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -28,21 +33,26 @@ public sealed class ConfigStore
         ConfigPath = Path.Combine(DataFolder, "config.json");
     }
 
-    public AppConfig Load()
+    public LoadResult Load()
     {
         if (!File.Exists(ConfigPath))
-            return new AppConfig();
+            return new LoadResult(new AppConfig(), null);
 
         try
         {
             string json = File.ReadAllText(ConfigPath);
-            return JsonSerializer.Deserialize<AppConfig>(json, Options) ?? new AppConfig();
+            var config = JsonSerializer.Deserialize<AppConfig>(json, Options);
+            if (config is not null)
+                return new LoadResult(config, null);
+
+            // Valid JSON but not the shape we expect (e.g. the file is "null").
+            return new LoadResult(new AppConfig(), BuildResetWarning(TryBackupCorrupt()));
         }
         catch
         {
-            // Corrupt config shouldn't brick the app; back it up and start fresh.
-            TryBackupCorrupt();
-            return new AppConfig();
+            // Corrupt config shouldn't brick the app; back it up and start fresh
+            // - but the user needs to know their rules just vanished, and why.
+            return new LoadResult(new AppConfig(), BuildResetWarning(TryBackupCorrupt()));
         }
     }
 
@@ -55,13 +65,24 @@ public sealed class ConfigStore
         File.Move(tmp, ConfigPath, overwrite: true);
     }
 
-    private void TryBackupCorrupt()
+    private static string BuildResetWarning(string? backupPath) => backupPath is not null
+        ? "Your Belvedere settings could not be read (the file may be corrupted) " +
+          "and have been reset to defaults.\n\nThe unreadable file was backed up to:\n" + backupPath
+        : "Your Belvedere settings could not be read (the file may be corrupted) " +
+          "and have been reset to defaults.";
+
+    private string? TryBackupCorrupt()
     {
         try
         {
-            if (File.Exists(ConfigPath))
-                File.Move(ConfigPath, ConfigPath + $".corrupt-{DateTime.Now:yyyyMMddHHmmss}", overwrite: true);
+            if (!File.Exists(ConfigPath)) return null;
+            string backupPath = ConfigPath + $".corrupt-{DateTime.Now:yyyyMMddHHmmss}";
+            File.Move(ConfigPath, backupPath, overwrite: true);
+            return backupPath;
         }
-        catch { /* best effort */ }
+        catch
+        {
+            return null; // best effort; the reset warning is still shown either way
+        }
     }
 }

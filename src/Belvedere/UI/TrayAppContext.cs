@@ -46,7 +46,10 @@ public sealed class TrayAppContext : ApplicationContext
             ConfirmPrompt = Confirm,
         };
 
-        _watcher = new WatchService(_log, _processor);
+        _watcher = new WatchService(_log, _processor)
+        {
+            OnWatchError = msg => Post(() => Notify("Belvedere error", msg, ToolTipIcon.Error)),
+        };
 
         _pauseItem = new ToolStripMenuItem("&Pause", null, (_, _) => TogglePause());
 
@@ -89,14 +92,45 @@ public sealed class TrayAppContext : ApplicationContext
         _mainForm.Activate();
     }
 
-    /// <summary>Called by MainForm when the user saves changes.</summary>
-    private void ApplyConfig(AppConfig updated)
+    /// <summary>Called by MainForm when the user saves changes. Returns whether
+    /// the save actually succeeded, so the caller can decide whether it's safe
+    /// to close (a failed save must not look like a successful one).</summary>
+    private bool ApplyConfig(AppConfig updated)
     {
+        try
+        {
+            _store.Save(updated);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save settings: " + ex.Message);
+            MessageBox.Show(
+                $"Belvedere could not save your settings:\n{ex.Message}\n\n" +
+                "Your changes have not been applied. Please try again.",
+                "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+
         _config = updated;
         _log.Enabled = updated.EnableLogging;
-        StartupManager.SetEnabled(updated.RunAtStartup);
-        _store.Save(updated);
         _watcher.Reload(updated);
+
+        // Non-fatal: settings are saved either way, this is just the registry
+        // "launch at sign-in" toggle, which corporate policy can legitimately block.
+        try
+        {
+            StartupManager.SetEnabled(updated.RunAtStartup);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to update startup registration: " + ex.Message);
+            MessageBox.Show(
+                $"Your settings were saved, but Belvedere could not update the " +
+                $"\"start at sign-in\" registration:\n{ex.Message}",
+                "Startup setting not applied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        return true;
     }
 
     private void TogglePause()

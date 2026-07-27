@@ -24,7 +24,14 @@ internal static class Program
         var log = new Logger(Path.Combine(store.DataFolder, "event.log"));
 
         bool firstRun = !File.Exists(store.ConfigPath);
-        var config = store.Load();
+        var loadResult = store.Load();
+        var config = loadResult.Config;
+
+        if (loadResult.Warning is not null)
+        {
+            MessageBox.Show(loadResult.Warning, "Belvedere settings reset",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
 
         if (firstRun)
             TryFirstRunImport(store, config);

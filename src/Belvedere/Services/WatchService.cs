@@ -26,6 +26,10 @@ public sealed class WatchService : IDisposable
     private volatile bool _paused;
     private volatile bool _started;
 
+    /// <summary>Called when a folder watcher fails to start or a sweep throws,
+    /// so this can reach the user (a toast) instead of only the log file.</summary>
+    public Action<string>? OnWatchError { get; set; }
+
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromSeconds(2);
 
     public WatchService(Logger log, RuleProcessor processor)
@@ -103,7 +107,9 @@ public sealed class WatchService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"Could not watch '{folder}': {ex.Message}");
+                    string msg = $"Could not watch '{folder}': {ex.Message}";
+                    _log.Error(msg);
+                    OnWatchError?.Invoke(msg);
                 }
             }
         }
@@ -137,7 +143,9 @@ public sealed class WatchService : IDisposable
         }
         catch (Exception ex)
         {
-            _log.Error($"Sweep failed: {ex.Message}");
+            string msg = $"Sweep failed: {ex.Message}";
+            _log.Error(msg);
+            OnWatchError?.Invoke(msg);
         }
         finally
         {
