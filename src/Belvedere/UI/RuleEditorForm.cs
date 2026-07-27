@@ -23,6 +23,7 @@ public sealed class RuleEditorForm : Form
         FlowDirection = FlowDirection.TopDown,
         WrapContents = false,
     };
+    private Button? _addConditionButton;
 
     private readonly ComboBox _action = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
     private readonly Label _destLabel = new() { Text = "Destination:", AutoSize = true, Anchor = AnchorStyles.Left };
@@ -118,9 +119,9 @@ public sealed class RuleEditorForm : Form
         host.Controls.Add(_conditions);
 
         var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 36 };
-        var add = new Button { Text = "Add condition", AutoSize = true };
-        add.Click += (_, _) => AddConditionRow(new Condition());
-        bar.Controls.Add(add);
+        _addConditionButton = new Button { Text = "Add condition", AutoSize = true };
+        _addConditionButton.Click += (_, _) => AddConditionRow(new Condition());
+        bar.Controls.Add(_addConditionButton);
 
         box.Controls.Add(host);
         box.Controls.Add(bar);
@@ -166,8 +167,11 @@ public sealed class RuleEditorForm : Form
         var ok = new Button { Text = "OK", DialogResult = DialogResult.None, AutoSize = true };
         ok.Click += (_, _) => OnOk();
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var test = new Button { Text = "Test rule…", AutoSize = true };
+        test.Click += (_, _) => TestRule();
         bar.Controls.Add(ok);
         bar.Controls.Add(cancel);
+        bar.Controls.Add(test);
         AcceptButton = ok;
         CancelButton = cancel;
         return bar;
@@ -196,24 +200,33 @@ public sealed class RuleEditorForm : Form
             foreach (var c in _rule.Conditions) AddConditionRow(c);
     }
 
-    private void OnOk()
+    /// <summary>Validates the current form state and, if valid, returns the
+    /// rule it describes - a brand-new object, not yet written into <see
+    /// cref="_rule"/>. Shows the relevant warning and returns null if invalid.
+    /// Shared by OnOk (which then copies the result into <see cref="_rule"/>)
+    /// and the "Test rule" dry run (which never touches <see cref="_rule"/>
+    /// at all, so Cancel afterwards still discards everything).</summary>
+    private Rule? BuildRuleFromForm()
     {
         if (string.IsNullOrWhiteSpace(_name.Text))
         {
             MessageBox.Show("Please give the rule a name.", "Missing name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            _name.Focus();
+            return null;
         }
         if (string.IsNullOrWhiteSpace(_source.Text))
         {
             MessageBox.Show("Please choose a folder to watch.", "Missing folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            _source.Focus();
+            return null;
         }
 
         var rows = _conditions.Controls.OfType<ConditionRow>().ToList();
         if (rows.Count == 0)
         {
             MessageBox.Show("Add at least one condition.", "No conditions", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            _addConditionButton?.Focus();
+            return null;
         }
 
         // Validate every condition before accepting any of them - a rule that
@@ -226,7 +239,9 @@ public sealed class RuleEditorForm : Form
             if (error is not null)
             {
                 MessageBox.Show(error, "Invalid condition", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                _conditions.ScrollControlIntoView(row);
+                row.FocusValue();
+                return null;
             }
         }
 
@@ -238,24 +253,67 @@ public sealed class RuleEditorForm : Form
         {
             MessageBox.Show("Choose a destination folder for this action.", "Missing destination",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            _destination.Focus();
+            return null;
         }
 
-        _rule.Name = _name.Text.Trim();
-        _rule.SourceFolder = _source.Text.Trim().TrimEnd('\\');
-        _rule.Recursive = _recursive.Checked;
-        _rule.Match = _matchAny.Checked ? MatchMode.Any : MatchMode.All;
-        _rule.Conditions = conditions;
-        _rule.Action = action;
-        _rule.Destination = _destination.Text.Trim();
-        _rule.Overwrite = _overwrite.Checked;
-        _rule.ConfirmAction = _confirm.Checked;
-        _rule.SkipReadOnly = _skipReadOnly.Checked;
-        _rule.SkipHidden = _skipHidden.Checked;
-        _rule.SkipSystem = _skipSystem.Checked;
+        return new Rule
+        {
+            Name = _name.Text.Trim(),
+            SourceFolder = _source.Text.Trim().TrimEnd('\\'),
+            Recursive = _recursive.Checked,
+            Match = _matchAny.Checked ? MatchMode.Any : MatchMode.All,
+            Conditions = conditions,
+            Action = action,
+            Destination = _destination.Text.Trim(),
+            Overwrite = _overwrite.Checked,
+            ConfirmAction = _confirm.Checked,
+            SkipReadOnly = _skipReadOnly.Checked,
+            SkipHidden = _skipHidden.Checked,
+            SkipSystem = _skipSystem.Checked,
+        };
+    }
+
+    private void OnOk()
+    {
+        var built = BuildRuleFromForm();
+        if (built is null) return;
+
+        _rule.Name = built.Name;
+        _rule.SourceFolder = built.SourceFolder;
+        _rule.Recursive = built.Recursive;
+        _rule.Match = built.Match;
+        _rule.Conditions = built.Conditions;
+        _rule.Action = built.Action;
+        _rule.Destination = built.Destination;
+        _rule.Overwrite = built.Overwrite;
+        _rule.ConfirmAction = built.ConfirmAction;
+        _rule.SkipReadOnly = built.SkipReadOnly;
+        _rule.SkipHidden = built.SkipHidden;
+        _rule.SkipSystem = built.SkipSystem;
 
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    /// <summary>"Test rule": shows every file the current (possibly unsaved)
+    /// form state would act on right now, without acting on any of them.</summary>
+    private async void TestRule()
+    {
+        var built = BuildRuleFromForm();
+        if (built is null) return;
+
+        Cursor = Cursors.WaitCursor;
+        try
+        {
+            var result = await Task.Run(() => Belvedere.Engine.DryRunPreview.Run(built));
+            using var results = new DryRunResultsForm(built, result);
+            results.ShowDialog(this);
+        }
+        finally
+        {
+            Cursor = Cursors.Default;
+        }
     }
 
     // -- Behavior ------------------------------------------------------------
@@ -384,6 +442,10 @@ public sealed class RuleEditorForm : Form
             if (c.Subject == Subject.Size) _unit.SelectedItem = c.SizeUnit.ToString();
             else if (c.Subject.IsDateSubject()) _unit.SelectedItem = c.TimeUnit.ToString();
         }
+
+        /// <summary>Puts the cursor on this row's value field, so a validation
+        /// error actually leads the user to the thing that needs fixing.</summary>
+        public void FocusValue() => _value.Focus();
 
         /// <summary>Checks this row's value against what its subject/verb
         /// actually require at runtime, so a broken condition is caught here

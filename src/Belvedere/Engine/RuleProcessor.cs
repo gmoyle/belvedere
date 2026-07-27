@@ -59,8 +59,7 @@ public sealed class RuleProcessor
             try { file = new FileInfo(path); if (!file.Exists) continue; }
             catch { continue; }
 
-            if (ShouldSkipByAttribute(rule, file)) continue;
-            if (!RuleEngine.Matches(rule, file)) continue;
+            if (!RuleEngine.ShouldProcess(rule, file)) continue;
 
             if (rule.ConfirmAction)
             {
@@ -86,14 +85,5 @@ public sealed class RuleProcessor
                     break;
             }
         }
-    }
-
-    private static bool ShouldSkipByAttribute(Rule rule, FileInfo file)
-    {
-        var a = file.Attributes;
-        if (rule.SkipReadOnly && a.HasFlag(FileAttributes.ReadOnly)) return true;
-        if (rule.SkipHidden && a.HasFlag(FileAttributes.Hidden)) return true;
-        if (rule.SkipSystem && a.HasFlag(FileAttributes.System)) return true;
-        return false;
     }
 }

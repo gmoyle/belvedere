@@ -10,6 +10,22 @@ namespace Belvedere.Engine;
 /// </summary>
 public static class RuleEngine
 {
+    /// <summary>The single source of truth for "would this rule act on this
+    /// file?" - attribute skip plus condition matching. Used both by the real
+    /// sweep (<see cref="RuleProcessor"/>) and the dry-run preview, so the two
+    /// can never disagree about what a rule would do.</summary>
+    public static bool ShouldProcess(Rule rule, FileInfo file) =>
+        !IsSkippedByAttribute(rule, file) && Matches(rule, file);
+
+    public static bool IsSkippedByAttribute(Rule rule, FileInfo file)
+    {
+        var a = file.Attributes;
+        if (rule.SkipReadOnly && a.HasFlag(FileAttributes.ReadOnly)) return true;
+        if (rule.SkipHidden && a.HasFlag(FileAttributes.Hidden)) return true;
+        if (rule.SkipSystem && a.HasFlag(FileAttributes.System)) return true;
+        return false;
+    }
+
     public static bool Matches(Rule rule, FileInfo file)
     {
         if (rule.Conditions.Count == 0)

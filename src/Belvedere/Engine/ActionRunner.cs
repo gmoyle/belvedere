@@ -45,6 +45,27 @@ public static class ActionRunner
         }
     }
 
+    /// <summary>Describes, in one line, what running this rule's action would
+    /// do to this file - for the dry-run preview. Pure string logic; never
+    /// touches the filesystem or the destination folder.</summary>
+    public static string DescribeAction(Rule rule, FileInfo file)
+    {
+        string dest = rule.Destination;
+        return rule.Action switch
+        {
+            ActionType.Move => $"Move to {Path.Combine(dest, file.Name)}",
+            ActionType.MoveLeaveShortcut => $"Move to {Path.Combine(dest, file.Name)} (leave shortcut)",
+            ActionType.Copy => $"Copy to {Path.Combine(dest, file.Name)}",
+            ActionType.Rename => $"Rename to {ExpandTemplate(dest, file)}",
+            ActionType.Recycle => "Send to Recycle Bin",
+            ActionType.Delete => "Delete permanently",
+            ActionType.Open => "Open",
+            ActionType.Print => "Print",
+            ActionType.Custom => $"Run: {dest}",
+            _ => "(unknown action)",
+        };
+    }
+
     private static ActionResult Move(Rule rule, FileInfo file, bool leaveShortcut)
     {
         string dest = rule.Destination;
