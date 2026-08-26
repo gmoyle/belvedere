@@ -13,7 +13,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "2.1.0" ?>
+    <?define ProductVersion = "2.2.0" ?>
   <?endif?>
 
   <Package

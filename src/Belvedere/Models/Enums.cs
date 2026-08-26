@@ -9,6 +9,12 @@ public enum Subject
     DateModified,
     DateAccessed,
     DateCreated,
+
+    /// <summary>The most recent of "last edited" and "last opened by the user"
+    /// (the latter read from Windows Recent Items history). Unlike DateAccessed,
+    /// this is a reliable "when did I last touch this?" signal on a cloud-synced
+    /// machine - it catches files you open to look at but never modify.</summary>
+    DateUsed,
 }
 
 /// <summary>The comparison operator a condition applies.</summary>

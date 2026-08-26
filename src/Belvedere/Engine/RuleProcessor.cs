@@ -25,15 +25,24 @@ public sealed class RuleProcessor
 
     public void ProcessAll(IEnumerable<Rule> rules)
     {
-        foreach (var rule in rules)
+        var ruleList = rules as IReadOnlyList<Rule> ?? rules.ToList();
+
+        // Read the Windows "opened by me" history once per sweep, and only when a
+        // rule actually needs it - scanning it isn't free, and most rules don't.
+        var opens = NeedsUsageHistory(ruleList) ? UsageHistory.Snapshot(_log) : null;
+
+        foreach (var rule in ruleList)
         {
             if (!rule.Enabled) continue;
-            try { ProcessRule(rule); }
+            try { ProcessRule(rule, opens); }
             catch (Exception ex) { _log.Error($"Rule '{rule.Name}' failed: {ex.Message}"); }
         }
     }
 
-    public void ProcessRule(Rule rule)
+    private static bool NeedsUsageHistory(IEnumerable<Rule> rules) =>
+        rules.Any(r => r.Enabled && r.Conditions.Any(c => c.Subject == Subject.DateUsed));
+
+    public void ProcessRule(Rule rule, IReadOnlyDictionary<string, DateTime>? opens = null)
     {
         if (!rule.Enabled) return;
         if (string.IsNullOrWhiteSpace(rule.SourceFolder) || !Directory.Exists(rule.SourceFolder))
@@ -68,7 +77,7 @@ public sealed class RuleProcessor
             }
             catch { continue; }
 
-            if (!RuleEngine.ShouldProcess(rule, entry)) continue;
+            if (!RuleEngine.ShouldProcess(rule, entry, opens)) continue;
 
             if (rule.ConfirmAction)
             {

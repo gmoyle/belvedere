@@ -4,6 +4,20 @@ All notable changes to Belvedere are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.2.0] — 2026-08-26
+
+### Added
+- **"Date last used (opened or edited)" condition.** A new date subject that
+  matches on the most recent of a file's last-modified time and the last time
+  you actually *opened* it, the latter read from Windows' "Recent Items"
+  history. Unlike "Date last opened" (NTFS last-access time), it is not
+  polluted by OneDrive sync, Search indexing, antivirus, or Belvedere's own
+  sweeps — so a "not used in the last N weeks" rule finally works as intended
+  on a cloud-synced folder, and files you open just to look at (but never
+  edit) are no longer wrongly archived. Falls back to the file's own
+  timestamps when no open history is available (e.g. the Windows setting is
+  disabled by policy). Backed by a new `Services/UsageHistory.cs`.
+
 ## [2.1.0] — 2026-07-27
 
 ### Added

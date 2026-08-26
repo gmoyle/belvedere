@@ -1,4 +1,5 @@
 using Belvedere.Models;
+using Belvedere.Services;
 
 namespace Belvedere.Engine;
 
@@ -35,6 +36,12 @@ public static class DryRunPreview
         int scanned = 0, totalMatched = 0;
         bool truncated = false;
 
+        // Match the real sweep: only "Date last used" conditions need the
+        // Windows open-history, so only read it when one is present.
+        var opens = rule.Conditions.Any(c => c.Subject == Subject.DateUsed)
+            ? UsageHistory.Snapshot()
+            : null;
+
         if (!string.IsNullOrWhiteSpace(rule.SourceFolder) && Directory.Exists(rule.SourceFolder))
         {
             var option = rule.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
@@ -61,7 +68,7 @@ public static class DryRunPreview
                 }
                 catch { continue; }
 
-                if (!RuleEngine.ShouldProcess(rule, entry)) continue;
+                if (!RuleEngine.ShouldProcess(rule, entry, opens)) continue;
 
                 totalMatched++;
                 if (shown.Count < MaxMatchesToShow)

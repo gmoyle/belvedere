@@ -16,8 +16,9 @@ public static class RuleEngine
     /// entry?" - attribute skip plus condition matching. Used both by the real
     /// sweep (<see cref="RuleProcessor"/>) and the dry-run preview, so the two
     /// can never disagree about what a rule would do.</summary>
-    public static bool ShouldProcess(Rule rule, FileSystemInfo entry) =>
-        !IsSkippedByAttribute(rule, entry) && Matches(rule, entry);
+    public static bool ShouldProcess(Rule rule, FileSystemInfo entry,
+        IReadOnlyDictionary<string, DateTime>? opens = null) =>
+        !IsSkippedByAttribute(rule, entry) && Matches(rule, entry, opens);
 
     public static bool IsSkippedByAttribute(Rule rule, FileSystemInfo entry)
     {
@@ -28,14 +29,15 @@ public static class RuleEngine
         return false;
     }
 
-    public static bool Matches(Rule rule, FileSystemInfo entry)
+    public static bool Matches(Rule rule, FileSystemInfo entry,
+        IReadOnlyDictionary<string, DateTime>? opens = null)
     {
         if (rule.Conditions.Count == 0)
             return false;
 
         foreach (var c in rule.Conditions)
         {
-            bool ok = Evaluate(c, entry);
+            bool ok = Evaluate(c, entry, opens);
 
             if (rule.Match == MatchMode.All && !ok)
                 return false;
@@ -47,7 +49,8 @@ public static class RuleEngine
         return rule.Match == MatchMode.All;
     }
 
-    private static bool Evaluate(Condition c, FileSystemInfo entry)
+    private static bool Evaluate(Condition c, FileSystemInfo entry,
+        IReadOnlyDictionary<string, DateTime>? opens)
     {
         return c.Subject switch
         {
@@ -59,8 +62,22 @@ public static class RuleEngine
             Subject.DateModified => EvalDate(c, entry.LastWriteTime),
             Subject.DateAccessed => EvalDate(c, entry.LastAccessTime),
             Subject.DateCreated => EvalDate(c, entry.CreationTime),
+            Subject.DateUsed => EvalDate(c, LatestUse(entry, opens)),
             _ => false,
         };
+    }
+
+    /// <summary>"Last used" = the most recent of when the file was last edited
+    /// (a reliable filesystem timestamp) and when the user last opened it (from
+    /// Windows Recent Items, supplied in <paramref name="opens"/>). When no open
+    /// is recorded - or no history was provided - this degrades gracefully to the
+    /// file's own modified time.</summary>
+    private static DateTime LatestUse(FileSystemInfo entry, IReadOnlyDictionary<string, DateTime>? opens)
+    {
+        DateTime used = entry.LastWriteTime;
+        if (opens is not null && opens.TryGetValue(entry.FullName, out var opened) && opened > used)
+            used = opened;
+        return used;
     }
 
     private static string GetName(FileSystemInfo f) => Path.GetFileNameWithoutExtension(f.Name);

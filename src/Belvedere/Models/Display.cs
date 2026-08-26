@@ -15,6 +15,7 @@ public static class Display
         Subject.DateModified => "Date last modified",
         Subject.DateAccessed => "Date last opened",
         Subject.DateCreated => "Date created",
+        Subject.DateUsed => "Date last used (opened or edited)",
         _ => s.ToString(),
     };
 
@@ -60,7 +61,7 @@ public static class Display
             Verb.IsGreaterThan, Verb.IsGreaterThanOrEqual,
             Verb.IsLessThan, Verb.IsLessThanOrEqual,
         },
-        Subject.DateModified or Subject.DateAccessed or Subject.DateCreated => new[]
+        Subject.DateModified or Subject.DateAccessed or Subject.DateCreated or Subject.DateUsed => new[]
         {
             Verb.IsInTheLast, Verb.IsNotInTheLast,
         },
@@ -72,7 +73,7 @@ public static class Display
     };
 
     public static bool IsDateSubject(this Subject s) =>
-        s is Subject.DateModified or Subject.DateAccessed or Subject.DateCreated;
+        s is Subject.DateModified or Subject.DateAccessed or Subject.DateCreated or Subject.DateUsed;
 
     public static string Label(this MatchTarget t) => t switch
     {
@@ -86,7 +87,7 @@ public static class Display
     /// an expensive recursive sum), so those are left Files-only.</summary>
     public static Subject[] SubjectsFor(MatchTarget target) => target switch
     {
-        MatchTarget.Folders => new[] { Subject.Name, Subject.DateModified, Subject.DateAccessed, Subject.DateCreated },
+        MatchTarget.Folders => new[] { Subject.Name, Subject.DateModified, Subject.DateAccessed, Subject.DateCreated, Subject.DateUsed },
         _ => Enum.GetValues<Subject>(),
     };
 
@@ -108,6 +109,8 @@ public static class Display
         "date last modified" => Subject.DateModified,
         "date last opened" => Subject.DateAccessed,
         "date created" => Subject.DateCreated,
+        "date last used (opened or edited)" => Subject.DateUsed,
+        "date last used" => Subject.DateUsed,
         _ => null,
     };
 
