@@ -5,13 +5,43 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace Belvedere.Engine;
 
-public enum ActionOutcome { Success, Skipped, Failed }
+public enum ActionOutcome { Success, Skipped, Deferred, Failed }
 
 public sealed record ActionResult(ActionOutcome Outcome, string Message)
 {
     public static ActionResult Ok(string msg) => new(ActionOutcome.Success, msg);
     public static ActionResult Skip(string msg) => new(ActionOutcome.Skipped, msg);
+    /// <summary>The entry is temporarily locked by another process; the action
+    /// wasn't done but should be retried on a later sweep, not reported as a
+    /// failure.</summary>
+    public static ActionResult Defer(string msg) => new(ActionOutcome.Deferred, msg);
     public static ActionResult Fail(string msg) => new(ActionOutcome.Failed, msg);
+}
+
+/// <summary>
+/// A per-sweep cap on how long <see cref="ActionRunner"/> may spend sleeping
+/// while waiting for locked files to become available. The first attempt on
+/// every file is always free; only the retry backoff waits draw this down. Once
+/// it's spent, further locked files are deferred immediately instead of each
+/// adding its own multi-second wait — so a sweep over many simultaneously
+/// locked files can't stall for an unbounded time. Used single-threaded within
+/// one sweep, so it needs no locking.
+/// </summary>
+public sealed class RetryBudget
+{
+    private int _remainingMs;
+
+    public RetryBudget(int totalMs) => _remainingMs = totalMs;
+
+    /// <summary>Reserve <paramref name="delayMs"/> of waiting, deducting it if
+    /// the budget allows. Returns false (deducting nothing) once exhausted.</summary>
+    public bool TryReserve(int delayMs)
+    {
+        if (delayMs <= 0) return true;
+        if (delayMs > _remainingMs) return false;
+        _remainingMs -= delayMs;
+        return true;
+    }
 }
 
 /// <summary>
@@ -21,21 +51,58 @@ public sealed record ActionResult(ActionOutcome Outcome, string Message)
 /// </summary>
 public static class ActionRunner
 {
-    public static ActionResult Run(Rule rule, FileSystemInfo entry)
+    // Win32 error codes that mean "someone else has the file open" - the classic
+    // cause is a file that's still being written (a screenshot tool saving it) or
+    // synced (OneDrive/Dropbox holding it open) at the instant we react to it.
+    private const int ErrorSharingViolation = 32; // 0x20
+    private const int ErrorLockViolation = 33;    // 0x21
+
+    // On a sharing violation, retry a few times with a short escalating backoff
+    // before giving up for this sweep. Most such locks (OneDrive syncing a small
+    // file, an app finishing a save) clear within a second or two.
+    private const int MaxAttempts = 4;
+    private const int RetryDelayMs = 300; // 300, 600, 900 -> ~1.8s worst case
+
+    public static ActionResult Run(Rule rule, FileSystemInfo entry, RetryBudget? budget = null)
     {
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            return entry switch
+            try
             {
-                DirectoryInfo dir => RunOnDirectory(rule, dir),
-                FileInfo file => RunOnFile(rule, file),
-                _ => ActionResult.Fail("Unsupported filesystem entry"),
-            };
+                return entry switch
+                {
+                    DirectoryInfo dir => RunOnDirectory(rule, dir),
+                    FileInfo file => RunOnFile(rule, file),
+                    _ => ActionResult.Fail("Unsupported filesystem entry"),
+                };
+            }
+            catch (IOException ex) when (IsSharingViolation(ex))
+            {
+                // Defer if we're out of attempts for this file, or the sweep's
+                // shared wait budget can't cover another backoff. A null budget
+                // means "no cap" (per-file retries only), for direct callers.
+                int delay = RetryDelayMs * attempt;
+                if (attempt >= MaxAttempts || budget?.TryReserve(delay) == false)
+                    return ActionResult.Defer(
+                        "File is in use by another process (still being written, " +
+                        "or synced by OneDrive); will retry on the next sweep.");
+
+                Thread.Sleep(delay);
+                entry.Refresh(); // the file may have changed/moved while we waited
+            }
+            catch (Exception ex)
+            {
+                return ActionResult.Fail(ex.Message);
+            }
         }
-        catch (Exception ex)
-        {
-            return ActionResult.Fail(ex.Message);
-        }
+    }
+
+    /// <summary>True if the exception is a "file is open by another process"
+    /// sharing/lock violation, as opposed to a genuine failure.</summary>
+    private static bool IsSharingViolation(IOException ex)
+    {
+        int code = ex.HResult & 0xFFFF; // low word of the 0x8007xxxx HRESULT
+        return code is ErrorSharingViolation or ErrorLockViolation;
     }
 
     private static ActionResult RunOnFile(Rule rule, FileInfo file) => rule.Action switch

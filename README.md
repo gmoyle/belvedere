@@ -106,7 +106,7 @@ The script publishes the exe and packages the MSI in one step:
 
 ```powershell
 pwsh installer-dotnet/build.ps1                # builds dist/Belvedere-2.1.0.msi
-pwsh installer-dotnet/build.ps1 -Version 2.2.0 # override the version
+pwsh installer-dotnet/build.ps1 -Version 2.3.0 # override the version
 ```
 
 For production distribution, code-sign both the `.exe` and the `.msi` to avoid

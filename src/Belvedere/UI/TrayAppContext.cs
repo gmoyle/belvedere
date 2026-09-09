@@ -18,6 +18,7 @@ public sealed class TrayAppContext : ApplicationContext
 
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _pauseItem;
+    private readonly ToolStripMenuItem _startupItem;
     private readonly Control _marshal; // hidden control for UI-thread Invoke
 
     private readonly Icon _iconActive;
@@ -31,6 +32,14 @@ public sealed class TrayAppContext : ApplicationContext
         _store = store;
         _log = log;
         _config = config;
+
+        // The HKCU Run key is the ground truth for "launch at sign-in": the
+        // installer can write it directly, so adopt what it actually says
+        // instead of trusting the persisted flag. Otherwise a fresh install's
+        // registration would be silently undone the first time settings are
+        // saved (ApplyConfig calls SetEnabled with the persisted value).
+        try { _config.RunAtStartup = StartupManager.IsEnabled(); }
+        catch (Exception ex) { _log.Error("Could not read startup registration: " + ex.Message); }
 
         _marshal = new Control();
         _ = _marshal.Handle; // force handle creation so Invoke works
@@ -51,11 +60,16 @@ public sealed class TrayAppContext : ApplicationContext
         };
 
         _pauseItem = new ToolStripMenuItem("&Pause", null, (_, _) => TogglePause());
+        _startupItem = new ToolStripMenuItem("Start with &Windows", null, (_, _) => ToggleStartup())
+        {
+            Checked = _config.RunAtStartup,
+        };
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("&Manage…", null, (_, _) => ShowManage()) { Font = new Font(menu.Font, FontStyle.Bold) });
         menu.Items.Add(new ToolStripMenuItem("&Run now", null, (_, _) => _watcher.RunNow()));
         menu.Items.Add(_pauseItem);
+        menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("&About", null, (_, _) => ShowAbout()));
         menu.Items.Add(new ToolStripMenuItem("E&xit", null, (_, _) => ExitApp()));
@@ -135,6 +149,39 @@ public sealed class TrayAppContext : ApplicationContext
         _pauseItem.Checked = pause;
         _tray.Icon = pause ? _iconPaused : _iconActive;
         _tray.Text = pause ? "Belvedere (paused)" : $"Belvedere {AppInfo.Version}";
+    }
+
+    private void ToggleStartup()
+    {
+        bool enable = !_startupItem.Checked;
+
+        try
+        {
+            StartupManager.SetEnabled(enable);
+        }
+        catch (Exception ex)
+        {
+            // Corporate policy can legitimately block writing the Run key.
+            _log.Error("Failed to update startup registration: " + ex.Message);
+            MessageBox.Show(
+                $"Belvedere could not update the \"start with Windows\" setting:\n{ex.Message}",
+                "Startup setting not applied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        _startupItem.Checked = enable;
+        _config.RunAtStartup = enable;
+
+        // Persist so the flag survives a restart and matches the registry.
+        try { _store.Save(_config); }
+        catch (Exception ex) { _log.Error("Failed to save startup preference: " + ex.Message); }
+
+        // Keep an open Manage window's checkbox in sync so its next save
+        // doesn't revert this change.
+        if (_mainForm is { IsDisposed: false })
+            _mainForm.SyncStartupState(enable);
+
+        _log.Info(enable ? "Enabled start with Windows." : "Disabled start with Windows.");
     }
 
     private void ShowAbout()

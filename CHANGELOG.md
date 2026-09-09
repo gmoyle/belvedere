@@ -4,6 +4,35 @@ All notable changes to Belvedere are documented here. Versions follow
 [Semantic Versioning](https://semver.org/); format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.3.0] — 2026-09-09
+
+### Added
+- **"Start with Windows" tray toggle.** A checkable item in the tray context
+  menu turns launch-at-sign-in on or off directly, without opening the Manage
+  window. It stays in sync with the Preferences checkbox and reflects the real
+  registry state.
+
+### Fixed
+- **The installer now registers launch-at-sign-in.** A fresh install writes the
+  same per-user `Run` key the app itself toggles (pointing at the installed
+  exe), so Belvedere actually starts with Windows out of the box. Suppress with
+  `msiexec /i Belvedere.msi LAUNCHATSTARTUP=0`; the entry is removed on
+  uninstall.
+- **Startup registration is no longer silently undone.** At launch Belvedere
+  now treats the `Run` key as the ground truth and adopts it, instead of
+  trusting the persisted flag — so the installer's (or an external) startup
+  registration survives the first time you save settings.
+- **Files locked by OneDrive (or another process) no longer error out.** When a
+  rule fired on a file that was still being written or synced, the action failed
+  immediately with "The process cannot access the file because it is being used
+  by another process" and an error notification. Belvedere now retries a locked
+  file a few times with a short backoff, and if it's still locked, quietly
+  *defers* it (logged, no error toast) and automatically re-sweeps ~20 seconds
+  later — so the file is moved once the lock clears, without alarming pop-ups.
+  Retry waiting is capped per sweep (a shared ~5s budget), so a folder full of
+  simultaneously locked files can't stall a sweep: each is still attempted once,
+  and any left locked are deferred to the follow-up sweep.
+
 ## [2.2.0] — 2026-08-26
 
 ### Added

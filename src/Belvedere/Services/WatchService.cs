@@ -21,6 +21,7 @@ public sealed class WatchService : IDisposable
     private readonly List<FileSystemWatcher> _watchers = new();
     private System.Threading.Timer? _sweepTimer;
     private System.Threading.Timer? _debounceTimer;
+    private System.Threading.Timer? _retryTimer;
     private readonly SemaphoreSlim _runLock = new(1, 1);
 
     private volatile bool _paused;
@@ -31,6 +32,11 @@ public sealed class WatchService : IDisposable
     public Action<string>? OnWatchError { get; set; }
 
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromSeconds(2);
+
+    /// <summary>How soon to re-sweep after a sweep left files deferred because
+    /// they were locked (e.g. still syncing). Long enough for OneDrive/an app to
+    /// let go, short enough that the user isn't left waiting a full interval.</summary>
+    private static readonly TimeSpan RetryAfterDeferralDelay = TimeSpan.FromSeconds(20);
 
     public WatchService(Logger log, RuleProcessor processor)
     {
@@ -137,9 +143,10 @@ public sealed class WatchService : IDisposable
 
         // Skip if a sweep is already running; the periodic timer will catch up.
         if (!_runLock.Wait(0)) return;
+        int deferred = 0;
         try
         {
-            _processor.ProcessAll(_config.Rules);
+            deferred = _processor.ProcessAll(_config.Rules);
         }
         catch (Exception ex)
         {
@@ -150,6 +157,22 @@ public sealed class WatchService : IDisposable
         finally
         {
             _runLock.Release();
+        }
+
+        // Some entries were locked by another process. Re-sweep soon so they
+        // aren't stranded until the (possibly distant) next periodic sweep.
+        if (deferred > 0) ScheduleRetry();
+    }
+
+    /// <summary>Arm a one-shot re-sweep after a deferral. Coalesces: repeated
+    /// deferrals just push the single pending retry out, they don't stack.</summary>
+    private void ScheduleRetry()
+    {
+        lock (_gate)
+        {
+            if (!_started) return;
+            _retryTimer ??= new System.Threading.Timer(_ => RunSweep(), null, Timeout.Infinite, Timeout.Infinite);
+            _retryTimer.Change(RetryAfterDeferralDelay, Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -168,6 +191,7 @@ public sealed class WatchService : IDisposable
     {
         _sweepTimer?.Dispose(); _sweepTimer = null;
         _debounceTimer?.Dispose(); _debounceTimer = null;
+        _retryTimer?.Dispose(); _retryTimer = null;
     }
 
     public void Dispose()

@@ -232,6 +232,17 @@ public sealed class MainForm : Form
         return page;
     }
 
+    /// <summary>
+    /// Called by the tray when the "Start with Windows" toggle changes, so this
+    /// open window's checkbox — and the copy it will hand back on Save — reflect
+    /// the new state instead of reverting it.
+    /// </summary>
+    public void SyncStartupState(bool enabled)
+    {
+        _working.RunAtStartup = enabled;
+        if (_startup is { IsDisposed: false }) _startup.Checked = enabled;
+    }
+
     private void LoadPrefsIntoControls()
     {
         _sweepValue.Value = Math.Clamp(_working.SweepInterval, 1, 100000);

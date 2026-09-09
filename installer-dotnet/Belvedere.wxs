@@ -13,7 +13,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <?ifndef ProductVersion ?>
-    <?define ProductVersion = "2.2.0" ?>
+    <?define ProductVersion = "2.3.0" ?>
   <?endif?>
 
   <Package
@@ -65,9 +65,30 @@
       <RegistryValue Root="HKCU" Key="Software\Belvedere" Name="installed" Type="integer" Value="1" KeyPath="yes" />
     </Component>
 
+    <!--
+      Launch at Windows sign-in for the installing user. This writes the same
+      HKCU Run value the app itself toggles (StartupManager), and points it at
+      the same quoted exe path, so the app's IsEnabled() check and the tray /
+      Manage toggles stay consistent with what the installer registered.
+
+      Enabled by default; suppress with LAUNCHATSTARTUP=0 on the command line
+      (e.g. msiexec /i Belvedere.msi LAUNCHATSTARTUP=0). Removed on uninstall.
+    -->
+    <Property Id="LAUNCHATSTARTUP" Value="1" />
+    <Component Id="RunAtStartup" Directory="INSTALLFOLDER" Guid="C4E2A7B1-6D93-4F58-8A0C-1B7E5F92D3A6"
+               Condition="LAUNCHATSTARTUP">
+      <RegistryValue Root="HKCU"
+                     Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                     Name="Belvedere"
+                     Type="string"
+                     Value="&quot;[INSTALLFOLDER]Belvedere.exe&quot;"
+                     KeyPath="yes" />
+    </Component>
+
     <Feature Id="Main" Title="Belvedere" Level="1">
       <ComponentGroupRef Id="ApplicationFiles" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="RunAtStartup" />
     </Feature>
 
   </Package>
