@@ -20,8 +20,10 @@ public sealed class MainForm : Form
     private readonly ConfigStore _store;
     private readonly Logger _log;
     private readonly Func<AppConfig, bool> _apply;
+    private readonly Action? _openReview;
     private AppConfig _working;
 
+    private readonly ListView _folderList = new();
     private readonly ListView _ruleList = new();
     private TextBox _logBox = null!;
 
@@ -34,11 +36,12 @@ public sealed class MainForm : Form
     private CheckBox _confirmExit = null!;
     private CheckBox _startup = null!;
 
-    public MainForm(ConfigStore store, Logger log, AppConfig config, Func<AppConfig, bool> apply)
+    public MainForm(ConfigStore store, Logger log, AppConfig config, Func<AppConfig, bool> apply, Action? openReview = null)
     {
         _store = store;
         _log = log;
         _apply = apply;
+        _openReview = openReview;
         _working = Clone(config);
 
         Text = "Belvedere — Manage";
@@ -48,6 +51,7 @@ public sealed class MainForm : Form
         Icon = AppIcons.Active;
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.TabPages.Add(BuildFoldersTab());
         tabs.TabPages.Add(BuildRulesTab());
         tabs.TabPages.Add(BuildPrefsTab());
         tabs.TabPages.Add(BuildLogTab());
@@ -61,16 +65,122 @@ public sealed class MainForm : Form
         _log.Logged += OnLogged;
         FormClosed += (_, _) => _log.Logged -= OnLogged;
 
+        RefreshFolderList();
         RefreshRuleList();
         LoadPrefsIntoControls();
         RefreshLog();
+    }
+
+    // -- Folders tab (review-first archiving) --------------------------------
+
+    private TabPage BuildFoldersTab()
+    {
+        var page = new TabPage("Folders");
+
+        _folderList.View = View.Details;
+        _folderList.FullRowSelect = true;
+        _folderList.GridLines = true;
+        _folderList.CheckBoxes = true;
+        _folderList.Dock = DockStyle.Fill;
+        _folderList.Columns.Add("Watched folder", 220);
+        _folderList.Columns.Add("Archive to", 200);
+        _folderList.Columns.Add("When unused for", 120);
+        _folderList.Columns.Add("Kept/snoozed", 90);
+        _folderList.DoubleClick += (_, _) => EditFolder();
+        _folderList.ItemChecked += (_, e) =>
+        {
+            if (e.Item.Tag is ManagedFolder m) m.Enabled = e.Item.Checked;
+        };
+
+        var intro = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 38,
+            Padding = new Padding(6, 6, 6, 0),
+            Text = "Point Belvedere at a folder with one age and one destination. " +
+                   "It proposes stale items; you approve them under \"Review archives\".",
+        };
+
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(4) };
+        bar.Controls.Add(MakeButton("Add…", AddFolder));
+        bar.Controls.Add(MakeButton("Edit…", EditFolder));
+        bar.Controls.Add(MakeButton("Remove", RemoveFolder));
+        bar.Controls.Add(MakeButton("Review now…", ReviewNow));
+
+        page.Controls.Add(_folderList);
+        page.Controls.Add(bar);
+        page.Controls.Add(intro);
+        return page;
+    }
+
+    private void RefreshFolderList()
+    {
+        _folderList.BeginUpdate();
+        _folderList.Items.Clear();
+        foreach (var m in _working.ManagedFolders)
+        {
+            var item = new ListViewItem(m.Path) { Checked = m.Enabled, Tag = m };
+            item.SubItems.Add(m.Destination);
+            item.SubItems.Add($"{m.MaxIdleAge} {m.MaxIdleUnit.ToString().ToLowerInvariant()}");
+            item.SubItems.Add(m.Decisions.Count.ToString());
+            _folderList.Items.Add(item);
+        }
+        _folderList.EndUpdate();
+    }
+
+    private ManagedFolder? SelectedFolder() =>
+        _folderList.SelectedItems.Count > 0 ? _folderList.SelectedItems[0].Tag as ManagedFolder : null;
+
+    private void AddFolder()
+    {
+        var folder = new ManagedFolder();
+        using var editor = new ManagedFolderEditorForm(folder);
+        if (editor.ShowDialog(this) == DialogResult.OK)
+        {
+            _working.ManagedFolders.Add(folder);
+            RefreshFolderList();
+        }
+    }
+
+    private void EditFolder()
+    {
+        var folder = SelectedFolder();
+        if (folder is null) return;
+        using var editor = new ManagedFolderEditorForm(folder);
+        if (editor.ShowDialog(this) == DialogResult.OK)
+            RefreshFolderList();
+    }
+
+    private void RemoveFolder()
+    {
+        var folder = SelectedFolder();
+        if (folder is null) return;
+        if (MessageBox.Show($"Stop managing \"{folder.Path}\"?\n\nThis only stops future archiving; " +
+                "nothing already archived is affected.", "Remove managed folder",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return;
+        _working.ManagedFolders.Remove(folder);
+        RefreshFolderList();
+    }
+
+    /// <summary>Saves first (so the review acts on the live, saved config and shared
+    /// journal held by the tray), then opens the review window.</summary>
+    private void ReviewNow()
+    {
+        if (_working.ManagedFolders.Count == 0)
+        {
+            MessageBox.Show("Add a managed folder first.", "Review now",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        if (SaveAll()) _openReview?.Invoke();
     }
 
     // -- Rules tab -----------------------------------------------------------
 
     private TabPage BuildRulesTab()
     {
-        var page = new TabPage("Rules");
+        var page = new TabPage("Rules (advanced)");
 
         _ruleList.View = View.Details;
         _ruleList.FullRowSelect = true;

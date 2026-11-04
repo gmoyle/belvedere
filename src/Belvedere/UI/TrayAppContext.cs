@@ -15,6 +15,7 @@ public sealed class TrayAppContext : ApplicationContext
     private readonly Logger _log;
     private readonly RuleProcessor _processor;
     private readonly WatchService _watcher;
+    private readonly ArchiveJournal _journal;
 
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _pauseItem;
@@ -26,6 +27,15 @@ public sealed class TrayAppContext : ApplicationContext
 
     private AppConfig _config;
     private MainForm? _mainForm;
+    private ArchiveReviewForm? _reviewForm;
+
+    /// <summary>Signature of the last proposal set we toasted about, so an
+    /// unchanged set doesn't nag the user every sweep.</summary>
+    private string? _lastProposalSig;
+
+    /// <summary>Whether the currently-shown balloon should open the review window
+    /// when clicked (vs. an ordinary action/error toast).</summary>
+    private bool _balloonForReview;
 
     public TrayAppContext(ConfigStore store, Logger log, AppConfig config)
     {
@@ -54,9 +64,12 @@ public sealed class TrayAppContext : ApplicationContext
             ConfirmPrompt = Confirm,
         };
 
+        _journal = new ArchiveJournal(_store.DataFolder);
+
         _watcher = new WatchService(_log, _processor)
         {
             OnWatchError = msg => Post(() => Notify("Belvedere error", msg, ToolTipIcon.Error)),
+            OnProposalsReady = plans => Post(() => OnProposalsReady(plans)),
         };
 
         _pauseItem = new ToolStripMenuItem("&Pause", null, (_, _) => TogglePause());
@@ -67,6 +80,7 @@ public sealed class TrayAppContext : ApplicationContext
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("&Manage…", null, (_, _) => ShowManage()) { Font = new Font(menu.Font, FontStyle.Bold) });
+        menu.Items.Add(new ToolStripMenuItem("Re&view archives…", null, (_, _) => ShowReview()));
         menu.Items.Add(new ToolStripMenuItem("&Run now", null, (_, _) => _watcher.RunNow()));
         menu.Items.Add(_pauseItem);
         menu.Items.Add(_startupItem);
@@ -82,6 +96,7 @@ public sealed class TrayAppContext : ApplicationContext
             ContextMenuStrip = menu,
         };
         _tray.DoubleClick += (_, _) => ShowManage();
+        _tray.BalloonTipClicked += (_, _) => { if (_balloonForReview) ShowReview(); };
 
         _watcher.Start(_config);
     }
@@ -93,12 +108,66 @@ public sealed class TrayAppContext : ApplicationContext
     {
         if (_mainForm is null || _mainForm.IsDisposed)
         {
-            _mainForm = new MainForm(_store, _log, _config, ApplyConfig);
+            _mainForm = new MainForm(_store, _log, _config, ApplyConfig, () => ShowReview());
         }
 
         if (!_mainForm.Visible) _mainForm.Show();
         _mainForm.WindowState = FormWindowState.Normal;
         _mainForm.Activate();
+    }
+
+    private void ShowReview(ManagedFolder? initial = null)
+    {
+        if (_config.ManagedFolders.Count == 0)
+        {
+            MessageBox.Show(
+                "No folders are being managed yet.\n\nOpen Manage → Folders to add one, then " +
+                "Belvedere will propose stale items here for you to review.",
+                "Review archives", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        if (_reviewForm is null || _reviewForm.IsDisposed)
+            _reviewForm = new ArchiveReviewForm(_config.ManagedFolders, _journal, SaveAfterReview, initial);
+
+        if (!_reviewForm.Visible) _reviewForm.Show();
+        _reviewForm.WindowState = FormWindowState.Normal;
+        _reviewForm.Activate();
+    }
+
+    /// <summary>Called by the review window after it moves files or records
+    /// Keep/Snooze decisions (which live on the shared config object). Persists and
+    /// reloads so watching reflects the change.</summary>
+    private bool SaveAfterReview()
+    {
+        try { _store.Save(_config); }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save after review: " + ex.Message);
+            MessageBox.Show($"Belvedere could not save your changes:\n{ex.Message}",
+                "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+        _watcher.Reload(_config);
+        _lastProposalSig = null; // the set changed; allow a fresh toast next scan
+        return true;
+    }
+
+    /// <summary>A sweep found items to review. Toast once per distinct proposal set
+    /// (clicking it opens the review), rather than nagging every sweep.</summary>
+    private void OnProposalsReady(IReadOnlyList<ArchivePlan> plans)
+    {
+        int total = plans.Sum(p => p.TotalProposals);
+        int folders = plans.Count(p => !p.IsEmpty);
+        if (total == 0) return;
+
+        string sig = $"{total}:{folders}";
+        if (sig == _lastProposalSig) return; // unchanged - don't nag
+        _lastProposalSig = sig;
+
+        Notify("Belvedere — items to review",
+            $"{total} item(s) in {folders} folder(s) ready to archive. Click to review.",
+            forReview: true);
     }
 
     /// <summary>Called by MainForm when the user saves changes. Returns whether
@@ -231,8 +300,9 @@ public sealed class TrayAppContext : ApplicationContext
             == DialogResult.Yes));
     }
 
-    private void Notify(string title, string message, ToolTipIcon icon = ToolTipIcon.Info)
+    private void Notify(string title, string message, ToolTipIcon icon = ToolTipIcon.Info, bool forReview = false)
     {
+        _balloonForReview = forReview;
         if (!_config.ShowNotifications) return;
         _tray.BalloonTipTitle = title;
         _tray.BalloonTipText = message;

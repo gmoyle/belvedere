@@ -89,3 +89,43 @@ public enum TimeUnit
     Days,
     Weeks,
 }
+
+// -- Managed-folder (review-first archiving) --------------------------------
+
+/// <summary>Which timestamp defines "idle" for a managed folder. <see cref="Used"/>
+/// is the reliable "when did I last touch this?" signal (max of last-edited and
+/// last-opened, from Windows Recent Items) and is the sensible default on a
+/// cloud-synced machine; <see cref="Modified"/> uses only the file's write time.</summary>
+public enum IdleBasis
+{
+    Used,
+    Modified,
+}
+
+/// <summary>A standing decision the user made while reviewing archive proposals.
+/// These are how a managed folder's rules come into being - the user never writes
+/// them up front; each one is the record of a "Keep" or "Snooze" click.</summary>
+public enum DecisionKind
+{
+    /// <summary>Never propose this for archiving again.</summary>
+    KeepForever,
+
+    /// <summary>Suppress this proposal until <see cref="ArchiveDecision.SnoozeUntil"/>.</summary>
+    SnoozeUntil,
+}
+
+/// <summary>What an <see cref="ArchiveDecision"/> applies to.</summary>
+public enum DecisionScope
+{
+    /// <summary>One specific absolute path (file or folder).</summary>
+    Path,
+
+    /// <summary>All files with a bare extension, e.g. "lnk" (no dot).</summary>
+    Extension,
+
+    /// <summary>A filename glob, e.g. "*wifi*", matched against the file name.</summary>
+    Glob,
+
+    /// <summary>A subfolder (by absolute path) and everything within it.</summary>
+    Folder,
+}
