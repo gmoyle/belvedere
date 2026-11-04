@@ -72,7 +72,7 @@ public static class RuleEngine
     /// Windows Recent Items, supplied in <paramref name="opens"/>). When no open
     /// is recorded - or no history was provided - this degrades gracefully to the
     /// file's own modified time.</summary>
-    private static DateTime LatestUse(FileSystemInfo entry, IReadOnlyDictionary<string, DateTime>? opens)
+    public static DateTime LatestUse(FileSystemInfo entry, IReadOnlyDictionary<string, DateTime>? opens)
     {
         DateTime used = entry.LastWriteTime;
         if (opens is not null && opens.TryGetValue(entry.FullName, out var opened) && opened > used)

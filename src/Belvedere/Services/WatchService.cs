@@ -31,6 +31,11 @@ public sealed class WatchService : IDisposable
     /// so this can reach the user (a toast) instead of only the log file.</summary>
     public Action<string>? OnWatchError { get; set; }
 
+    /// <summary>Called after a sweep when one or more managed folders have items
+    /// to review. The scan itself never acts - review-first archiving only
+    /// proposes; the user approves in the review window.</summary>
+    public Action<IReadOnlyList<ArchivePlan>>? OnProposalsReady { get; set; }
+
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromSeconds(2);
 
     /// <summary>How soon to re-sweep after a sweep left files deferred because
@@ -86,38 +91,58 @@ public sealed class WatchService : IDisposable
 
             if (!_config.RealTimeWatch) return;
 
-            // One watcher per distinct, existing source folder.
+            var watched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // One watcher per distinct, existing rule source folder.
             var folders = _config.Rules
                 .Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.SourceFolder))
                 .GroupBy(r => r.SourceFolder, StringComparer.OrdinalIgnoreCase);
 
             foreach (var group in folders)
             {
-                string folder = group.Key;
-                if (!Directory.Exists(folder)) continue;
-
-                try
-                {
-                    var w = new FileSystemWatcher(folder)
-                    {
-                        IncludeSubdirectories = group.Any(r => r.Recursive),
-                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite
-                                     | NotifyFilters.CreationTime | NotifyFilters.Size,
-                        EnableRaisingEvents = true,
-                    };
-                    w.Created += OnFsEvent;
-                    w.Changed += OnFsEvent;
-                    w.Renamed += OnFsEvent;
-                    w.Error += OnFsError;
-                    _watchers.Add(w);
-                }
-                catch (Exception ex)
-                {
-                    string msg = $"Could not watch '{folder}': {ex.Message}";
-                    _log.Error(msg);
-                    OnWatchError?.Invoke(msg);
-                }
+                if (AddWatcher(group.Key, group.Any(r => r.Recursive)))
+                    watched.Add(group.Key);
             }
+
+            // Managed folders are always watched recursively (the scanner looks
+            // into subfolders), skipping any path a rule already covers.
+            foreach (var mf in _config.ManagedFolders)
+            {
+                if (!mf.Enabled || string.IsNullOrWhiteSpace(mf.Path)) continue;
+                if (watched.Contains(mf.Path)) continue;
+                if (AddWatcher(mf.Path, includeSubdirectories: true))
+                    watched.Add(mf.Path);
+            }
+        }
+    }
+
+    /// <summary>Creates and registers a watcher for one folder. Returns false
+    /// (and reports) if the folder is missing or the watcher can't be created.</summary>
+    private bool AddWatcher(string folder, bool includeSubdirectories)
+    {
+        if (!Directory.Exists(folder)) return false;
+        try
+        {
+            var w = new FileSystemWatcher(folder)
+            {
+                IncludeSubdirectories = includeSubdirectories,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite
+                             | NotifyFilters.CreationTime | NotifyFilters.Size,
+                EnableRaisingEvents = true,
+            };
+            w.Created += OnFsEvent;
+            w.Changed += OnFsEvent;
+            w.Renamed += OnFsEvent;
+            w.Error += OnFsError;
+            _watchers.Add(w);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            string msg = $"Could not watch '{folder}': {ex.Message}";
+            _log.Error(msg);
+            OnWatchError?.Invoke(msg);
+            return false;
         }
     }
 
@@ -162,6 +187,35 @@ public sealed class WatchService : IDisposable
         // Some entries were locked by another process. Re-sweep soon so they
         // aren't stranded until the (possibly distant) next periodic sweep.
         if (deferred > 0) ScheduleRetry();
+
+        // Managed folders: scan (read-only) and surface anything to review. This
+        // never acts on its own - the user approves archives in the review window.
+        ScanManagedFolders();
+    }
+
+    /// <summary>Scans enabled managed folders and, if any have items to review,
+    /// raises <see cref="OnProposalsReady"/>. Read-only; failures are logged, not
+    /// fatal to the sweep.</summary>
+    private void ScanManagedFolders()
+    {
+        try
+        {
+            var managed = _config.ManagedFolders
+                .Where(m => m.Enabled && !string.IsNullOrWhiteSpace(m.Path) && Directory.Exists(m.Path))
+                .ToList();
+            if (managed.Count == 0) return;
+
+            // Read the Windows open-history once for the whole scan, only if needed.
+            var opens = managed.Any(m => m.Basis == IdleBasis.Used) ? UsageHistory.Snapshot(_log) : null;
+
+            var plans = managed.Select(m => ArchiveScanner.Scan(m, opens)).ToList();
+            if (plans.Any(p => !p.IsEmpty))
+                OnProposalsReady?.Invoke(plans);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Archive scan failed: {ex.Message}");
+        }
     }
 
     /// <summary>Arm a one-shot re-sweep after a deferral. Coalesces: repeated

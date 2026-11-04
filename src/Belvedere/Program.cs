@@ -36,6 +36,9 @@ internal static class Program
         if (firstRun)
             TryFirstRunImport(store, config);
 
+        if (!config.ArchiveConversionOffered)
+            TryOfferArchiveConversion(store, config);
+
         log.Enabled = config.EnableLogging;
         log.Info($"Starting Belvedere {typeof(Program).Assembly.GetName().Version?.ToString(3)}");
 
@@ -97,6 +100,43 @@ internal static class Program
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
+        store.Save(config);
+    }
+
+    /// <summary>
+    /// One-time offer (per install) to lift a simple "archive stale files, keep
+    /// these" rule into the new review-first managed-folder model. The old rule is
+    /// disabled rather than deleted, so the change is reversible.
+    /// </summary>
+    private static void TryOfferArchiveConversion(ConfigStore store, AppConfig config)
+    {
+        var candidates = config.Rules
+            .Where(ManagedFolderConverter.IsConvertible)
+            .Where(r => !config.ManagedFolders.Any(m =>
+                string.Equals(m.Path.TrimEnd('\\'), r.SourceFolder.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        foreach (var rule in candidates)
+        {
+            if (!ManagedFolderConverter.TryConvert(rule, out var folder)) continue;
+
+            var choice = MessageBox.Show(
+                "Belvedere can now manage archiving for you without a complicated rule.\n\n" +
+                $"Your rule \"{rule.Name}\" can become a simpler managed folder:\n\n" +
+                ManagedFolderConverter.Describe(folder) + "\n\n" +
+                "Instead of moving files silently, Belvedere will show you what's stale and " +
+                "let you approve each archive (Keep / Snooze / Archive).\n\n" +
+                "Convert it now? (Your old rule will be turned off, not deleted.)",
+                "Simplify your archive rule?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (choice == DialogResult.Yes)
+            {
+                config.ManagedFolders.Add(folder);
+                rule.Enabled = false;
+            }
+        }
+
+        config.ArchiveConversionOffered = true;
         store.Save(config);
     }
 }

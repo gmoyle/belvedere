@@ -6,9 +6,13 @@ namespace Belvedere.Models;
 /// </summary>
 public sealed class AppConfig
 {
-    public int ConfigVersion { get; set; } = 1;
+    public int ConfigVersion { get; set; } = 2;
 
     public List<Rule> Rules { get; set; } = new();
+
+    /// <summary>Folders under review-first management (the simple archiving model).
+    /// Independent of <see cref="Rules"/>; both are evaluated each sweep.</summary>
+    public List<ManagedFolder> ManagedFolders { get; set; } = new();
 
     // Preferences ------------------------------------------------------------
 
@@ -32,4 +36,8 @@ public sealed class AppConfig
 
     /// <summary>Remembered folder for file/folder pickers.</summary>
     public string LastFolder { get; set; } = string.Empty;
+
+    /// <summary>Whether we've already offered to convert a simple archive rule into
+    /// a managed folder. Offered once (accepted or not), so upgraders aren't nagged.</summary>
+    public bool ArchiveConversionOffered { get; set; }
 }
